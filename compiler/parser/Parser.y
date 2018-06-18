@@ -1672,7 +1672,7 @@ rule_explicit_activation :: { ([AddAnn]
         | '[' '~' ']'           { ([mos $1,mj AnnTilde $2,mcs $3]
                                   ,NeverActive) }
 
-rule_foralls :: { ([AddAnn], Maybe [LHsTyVarBndr GhcPs], [LRuleBndr GhcPs]) }
+rule_foralls :: { ([AddAnn], Maybe [LHsTyVarBndr GhcPs], [LRuleBndr GhcPs]) } -- TODOYAC add hintExplicitForall
         : 'forall' rule_vars '.' 'forall' rule_vars '.'    {% checkRuleTyVarBndrNames (mkRuleTyVarBndrs $2)
                                                               >> return ([mu AnnForall $1,mj AnnDot $3,
                                                                           mu AnnForall $4,mj AnnDot $6],
