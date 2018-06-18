@@ -1410,8 +1410,11 @@ zonkRules :: ZonkEnv -> [LRuleDecl GhcTcId] -> TcM [LRuleDecl GhcTc]
 zonkRules env rs = mapM (wrapLocM (zonkRule env)) rs
 
 zonkRule :: ZonkEnv -> RuleDecl GhcTcId -> TcM (RuleDecl GhcTc)
-zonkRule env (HsRule fvs name act (vars{-::[RuleBndr TcId]-}) lhs rhs)
-  = do { (env_inside, new_bndrs) <- mapAccumLM zonk_bndr env vars
+zonkRule env rule@(HsRule { rd_tyvs = ty_bndrs -- <- YAC refactoring
+                          , rd_tmvs = tm_bndrs{-::[RuleBndr TcId]-}
+                          , rd_lhs = lhs
+                          , rd_rhs = rhs })
+  = do { (env_inside, new_tm_bndrs) <- mapAccumLM zonk_tm_bndr env tm_bndrs
 
        ; let env_lhs = setZonkType env_inside zonkTvSkolemising
               -- See Note [Zonking the LHS of a RULE]
@@ -1419,13 +1422,16 @@ zonkRule env (HsRule fvs name act (vars{-::[RuleBndr TcId]-}) lhs rhs)
        ; new_lhs <- zonkLExpr env_lhs    lhs
        ; new_rhs <- zonkLExpr env_inside rhs
 
-       ; return (HsRule fvs name act new_bndrs new_lhs new_rhs ) }
+       ; return $ rule { rd_tyvs = ty_bndrs       -- QYAC This ok w/ GHC style?
+                       , rd_tmvs = new_tm_bndrs
+                       , rd_lhs  = new_lhs
+                       , rd_rhs  = new_rhs } }
   where
-   zonk_bndr env (L l (RuleBndr x (L loc v)))
+   zonk_tm_bndr env (L l (RuleBndr x (L loc v)))
       = do { (env', v') <- zonk_it env v
            ; return (env', L l (RuleBndr x (L loc v'))) }
-   zonk_bndr _ (L _ (RuleBndrSig {})) = panic "zonk_bndr RuleBndrSig"
-   zonk_bndr _ (L _ (XRuleBndr {})) = panic "zonk_bndr XRuleBndr"
+   zonk_tm_bndr _ (L _ (RuleBndrSig {})) = panic "zonk_tm_bndr RuleBndrSig"
+   zonk_tm_bndr _ (L _ (XRuleBndr {})) = panic "zonk_tm_bndr XRuleBndr"
 
    zonk_it env v
      | isId v     = do { v' <- zonkIdBndr env v

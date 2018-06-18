@@ -48,7 +48,7 @@ module HsDecls (
   -- ** Deriving strategies
   DerivStrategy(..), LDerivStrategy, derivStrategyName,
   -- ** @RULE@ declarations
-  LRuleDecls,RuleDecls(..),RuleDecl(..), LRuleDecl, HsRuleRn(..),
+  LRuleDecls,RuleDecls(..),RuleDecl(..),LRuleDecl,HsRuleRn(..),
   RuleBndr(..),LRuleBndr,
   collectRuleBndrSigTys,
   flattenRuleDecls, pprFullRuleName,
@@ -1548,6 +1548,7 @@ data FamEqn pass pats rhs
   = FamEqn
        { feqn_ext    :: XCFamEqn pass pats rhs
        , feqn_tycon  :: Located (IdP pass)
+       , feqn_bndrs  :: Maybe [LHsTyVarBndr pass] -- ^ Optional quantified type vars
        , feqn_pats   :: pats
        , feqn_fixity :: LexicalFixity -- ^ Fixity used in the declaration
        , feqn_rhs    :: rhs
@@ -1633,16 +1634,18 @@ ppr_instance_keyword NotTopLevel = empty
 ppr_fam_inst_eqn :: (OutputableBndrId (GhcPass p))
                  => TyFamInstEqn (GhcPass p) -> SDoc
 ppr_fam_inst_eqn (HsIB { hsib_body = FamEqn { feqn_tycon  = tycon
+                                            , feqn_bndrs  = bndrs
                                             , feqn_pats   = pats
                                             , feqn_fixity = fixity
                                             , feqn_rhs    = rhs }})
-    = pprFamInstLHS tycon pats fixity [] Nothing <+> equals <+> ppr rhs
+    = pprFamInstLHS tycon bndrs pats fixity [] Nothing <+> equals <+> ppr rhs
 ppr_fam_inst_eqn (HsIB { hsib_body = XFamEqn x }) = ppr x
 ppr_fam_inst_eqn (XHsImplicitBndrs x) = ppr x
 
 ppr_fam_deflt_eqn :: (OutputableBndrId (GhcPass p))
                   => LTyFamDefltEqn (GhcPass p) -> SDoc
 ppr_fam_deflt_eqn (L _ (FamEqn { feqn_tycon  = tycon
+                               , feqn_bndrs  = _
                                , feqn_pats   = tvs
                                , feqn_fixity = fixity
                                , feqn_rhs    = rhs }))
@@ -1658,13 +1661,14 @@ pprDataFamInstDecl :: (OutputableBndrId (GhcPass p))
                    => TopLevelFlag -> DataFamInstDecl (GhcPass p) -> SDoc
 pprDataFamInstDecl top_lvl (DataFamInstDecl { dfid_eqn = HsIB { hsib_body =
                              FamEqn { feqn_tycon  = tycon
+                                    , feqn_bndrs  = bndrs
                                     , feqn_pats   = pats
                                     , feqn_fixity = fixity
                                     , feqn_rhs    = defn }}})
   = pp_data_defn pp_hdr defn
   where
     pp_hdr ctxt = ppr_instance_keyword top_lvl
-              <+> pprFamInstLHS tycon pats fixity ctxt Nothing
+              <+> pprFamInstLHS tycon bndrs pats fixity ctxt Nothing
                     -- No need to pass an explicit kind signature to
                     -- pprFamInstLHS here, since pp_data_defn already
                     -- pretty-prints that. See #14817.
@@ -1687,14 +1691,16 @@ pprDataFamInstFlavour (DataFamInstDecl (XHsImplicitBndrs x))
 
 pprFamInstLHS :: (OutputableBndrId (GhcPass p))
    => Located (IdP (GhcPass p))
+   -> Maybe [LHsTyVarBndr (GhcPass p)]
    -> HsTyPats (GhcPass p)
    -> LexicalFixity
    -> HsContext (GhcPass p)
    -> Maybe (LHsKind (GhcPass p))
    -> SDoc
-pprFamInstLHS thing typats fixity context mb_kind_sig
+pprFamInstLHS thing bndrs typats fixity context mb_kind_sig
                                               -- explicit type patterns
-   = hsep [ pprHsContext context, pp_pats typats, pp_kind_sig ]
+   = hsep [ pprHsContext context, pprHsExplicitForAll bndrs
+          , pp_pats typats, pp_kind_sig ]
    where
      pp_pats (patl:patsr)
        | fixity == Infix
@@ -2069,24 +2075,24 @@ type LRuleDecl pass = Located (RuleDecl pass)
 
 -- | Rule Declaration
 data RuleDecl pass
-  = HsRule                             -- Source rule
-        (XHsRule pass)         -- After renamer, free-vars from the LHS and RHS
-        (Located (SourceText,RuleName)) -- Rule name
-               -- Note [Pragma source text] in BasicTypes
-        Activation
-        [LRuleBndr pass]        -- Forall'd vars; after typechecking this
-                                --   includes tyvars
-        (Located (HsExpr pass)) -- LHS
-        (Located (HsExpr pass)) -- RHS
-        -- ^
-        --  - 'ApiAnnotation.AnnKeywordId' :
-        --           'ApiAnnotation.AnnOpen','ApiAnnotation.AnnTilde',
-        --           'ApiAnnotation.AnnVal',
-        --           'ApiAnnotation.AnnClose',
-        --           'ApiAnnotation.AnnForall','ApiAnnotation.AnnDot',
-        --           'ApiAnnotation.AnnEqual',
-
-        -- For details on above see note [Api annotations] in ApiAnnotation
+  = HsRule -- Source rule
+       { rd_ext  :: XHsRule pass 
+           -- ^ After renamer, free-vars from the LHS and RHS
+       , rd_name :: Located (SourceText,RuleName)
+           -- ^ Note [Pragma source text] in BasicTypes
+       , rd_act  :: Activation
+       , rd_tyvs :: Maybe [XHsRuleTyVarBndr pass] -- ^ Forall'd type vars
+       , rd_tmvs :: [LRuleBndr pass]              -- ^ Forall'd term vars
+       , rd_lhs  :: Located (HsExpr pass)
+       , rd_rhs  :: Located (HsExpr pass)
+       }
+    -- ^
+    --  - 'ApiAnnotation.AnnKeywordId' :
+    --           'ApiAnnotation.AnnOpen','ApiAnnotation.AnnTilde',
+    --           'ApiAnnotation.AnnVal',
+    --           'ApiAnnotation.AnnClose',
+    --           'ApiAnnotation.AnnForall','ApiAnnotation.AnnDot',
+    --           'ApiAnnotation.AnnEqual',
   | XRuleDecl (XXRuleDecl pass)
 
 data HsRuleRn = HsRuleRn NameSet NameSet -- Free-vars from the LHS and RHS
@@ -2095,6 +2101,10 @@ data HsRuleRn = HsRuleRn NameSet NameSet -- Free-vars from the LHS and RHS
 type instance XHsRule       GhcPs = NoExt
 type instance XHsRule       GhcRn = HsRuleRn
 type instance XHsRule       GhcTc = HsRuleRn
+
+type instance XHsRuleTyVarBndr GhcPs = LHsTyVarBndr GhcPs
+type instance XHsRuleTyVarBndr GhcRn = LHsTyVarBndr GhcRn
+type instance XHsRuleTyVarBndr GhcTc = LHsTyVarBndr GhcRn
 
 type instance XXRuleDecl    (GhcPass _) = NoExt
 
@@ -2125,21 +2135,28 @@ collectRuleBndrSigTys bndrs = [ty | RuleBndrSig _ _ ty <- bndrs]
 pprFullRuleName :: Located (SourceText, RuleName) -> SDoc
 pprFullRuleName (L _ (st, n)) = pprWithSourceText st (doubleQuotes $ ftext n)
 
-instance (p ~ GhcPass pass, OutputableBndrId p)
-       => Outputable (RuleDecls p) where
-  ppr (HsRules _ st rules)
+instance (p ~ GhcPass pass, OutputableBndrId p) => Outputable (RuleDecls p) where
+  ppr (HsRules { rds_src = st
+               , rds_rules = rules })
     = pprWithSourceText st (text "{-# RULES")
           <+> vcat (punctuate semi (map ppr rules)) <+> text "#-}"
   ppr (XRuleDecls x) = ppr x
 
 instance (p ~ GhcPass pass, OutputableBndrId p) => Outputable (RuleDecl p) where
-  ppr (HsRule _ name act ns lhs rhs)
+  ppr (HsRule { rd_name = name
+              , rd_act  = act
+              , rd_tyvs = tys
+              , rd_tmvs = tms
+              , rd_lhs  = lhs
+              , rd_rhs  = rhs })
         = sep [pprFullRuleName name <+> ppr act,
-               nest 4 (pp_forall <+> pprExpr (unLoc lhs)),
+               nest 4 (pp_forall_ty tys <+> pp_forall_tm <+> pprExpr (unLoc lhs)),
                nest 6 (equals <+> pprExpr (unLoc rhs)) ]
         where
-          pp_forall | null ns   = empty
-                    | otherwise = forAllLit <+> fsep (map ppr ns) <> dot
+          pp_forall_ty Nothing     = empty
+          pp_forall_ty (Just qtvs) = forAllLit <+> fsep (map ppr qtvs) <> dot
+          pp_forall_tm | null tms  = empty
+                       | otherwise = forAllLit <+> fsep (map ppr tms) <> dot
   ppr (XRuleDecl x) = ppr x
 
 instance (p ~ GhcPass pass, OutputableBndrId p) => Outputable (RuleBndr p) where

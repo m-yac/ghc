@@ -51,7 +51,7 @@ import NameEnv
 import Avail
 import Outputable
 import Bag
-import BasicTypes       ( RuleName, pprRuleName )
+import BasicTypes       ( DerivStrategy, RuleName, pprRuleName )
 import FastString
 import SrcLoc
 import DynFlags
@@ -65,9 +65,10 @@ import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
 import Control.Arrow ( first )
-import Data.List ( mapAccumL )
+import Data.List ( mapAccumL, partition )
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty ( NonEmpty(..) )
+import Data.Maybe ( isJust, maybe, fromMaybe )
 import qualified Data.Set as Set ( difference, fromList, toList, null )
 
 {- | @rnSourceDecl@ "renames" declarations.
@@ -694,6 +695,7 @@ rnFamInstEqn :: HsDocContext
              -> RnM (FamInstEqn GhcRn rhs', FreeVars)
 rnFamInstEqn doc mb_cls rhs_kvars
     (HsIB { hsib_body = FamEqn { feqn_tycon  = tycon
+                               , feqn_bndrs  = mb_bndrs
                                , feqn_pats   = pats
                                , feqn_fixity = fixity
                                , feqn_rhs    = payload }}) rn_payload
@@ -704,60 +706,82 @@ rnFamInstEqn doc mb_cls rhs_kvars
                      (L loc _ : ps) -> combineSrcSpans loc (getLoc (last ps))
 
        ; pat_kity_vars_with_dups <- extractHsTysRdrTyVarsDups pats
-       ; let pat_vars = freeKiTyVarsAllVars $
-                        rmDupsInRdrTyVars pat_kity_vars_with_dups
              -- Use the "...Dups" form because it's needed
              -- below to report unsed binder on the LHS
-       ; pat_var_names <- mapM (newTyVarNameRn mb_cls . L loc . unLoc) pat_vars
-
+       ; let pat_kity_vars = rmDupsInRdrTyVars pat_kity_vars_with_dups
+       
+         -- all pat vars not explicitly bound (see extractHsTvBndrs)
+       ; mb_imp_kity_vars <- traverse (\bs -> extractHsTvBndrs bs pat_kity_vars) mb_bndrs
+       ; let imp_vars = case mb_imp_kity_vars of
+                          -- kind vars are the only ones freed if we have an explicit forall
+                          Just nbnd_kity_vars -> freeKiTyVarsKindVars nbnd_kity_vars
+                          -- all pattern vars are freed otherwise
+                          Nothing             -> freeKiTyVarsAllVars pat_kity_vars
+       ; imp_var_names <- mapM (newTyVarNameRn mb_cls . L loc . unLoc) imp_vars
+       
+       ; let bnd_vars = map hsLTyVarLocName (fromMaybe [] mb_bndrs)
+             payload_kvars = filterOut (`elemRdr` (bnd_vars ++ imp_vars)) rhs_kvars
              -- Make sure to filter out the kind variables that were explicitly
              -- bound in the type patterns.
-       ; let payload_vars = filterOut (`elemRdr` pat_vars) rhs_kvars
-       ; payload_var_names <- mapM (newTyVarNameRn mb_cls) payload_vars
+       ; payload_kvar_names <- mapM (newTyVarNameRn mb_cls) payload_kvars
 
-       ; let all_var_names = pat_var_names ++ payload_var_names
-
+         -- all names not bound in an explict forall
+       ; let all_imp_var_names = imp_var_names ++ payload_kvar_names
+       
+       ; let (bndrs_used, bndrs_unused)
+               = partition (\x -> (hsLTyVarLocName x) `elemRdr`
+                                  (freeKiTyVarsAllVars pat_kity_vars))
+                           (fromMaybe [] mb_bndrs)
+         -- Error on unused explicitly quantified binders
+       ; mapM_ unusedExplicitForAllErr bndrs_unused
+       
              -- All the free vars of the family patterns
              -- with a sensible binding location
-       ; ((pats', payload'), fvs)
-              <- bindLocalNamesFV all_var_names $
+       ; ((bndrs', pats', payload'), fvs)
+              <- bindLocalNamesFV all_imp_var_names $
+                 bindLHsTyVarBndrs doc (Just $ inHsDocContext doc)
+                                   mb_cls bndrs_used (\bndrs' ->
+                   -- ^ only bring into scope explicitly quantified bndrs that
+                   -- are actually used on the LHS!
                  do { (pats', pat_fvs) <- rnLHsTypes (FamPatCtx tycon) pats
                     ; (payload', rhs_fvs) <- rn_payload doc payload
 
-                       -- Report unused binders on the LHS
-                       -- See Note [Unused type variables in family instances]
-                    ; let groups :: [NonEmpty (Located RdrName)]
-                          groups = equivClasses cmpLocated $
-                                   freeKiTyVarsAllVars pat_kity_vars_with_dups
-                    ; tv_nms_dups <- mapM (lookupOccRn . unLoc) $
-                                     [ tv | (tv :| (_:_)) <- groups ]
-                          -- Add to the used variables
-                          --  a) any variables that appear *more than once* on the LHS
-                          --     e.g.   F a Int a = Bool
-                          --  b) for associated instances, the variables
-                          --     of the instance decl.  See
-                          --     Note [Unused type variables in family instances]
-                    ; let tv_nms_used = extendNameSetList rhs_fvs $
-                                        inst_tvs ++ tv_nms_dups
-                          inst_tvs = case mb_cls of
-                                       Nothing            -> []
-                                       Just (_, inst_tvs) -> inst_tvs
-                    ; warnUnusedTypePatterns pat_var_names tv_nms_used
+                      -- Only when there's no explicit forall...
+                    ; case mb_bndrs of
+                        Just _ -> return ()
+                        Nothing -> do {
+                           -- ...report unused binders on the LHS
+                           -- See Note [Unused type variables in family instances]
+                        ; let groups :: [NonEmpty (Located RdrName)]
+                              groups = equivClasses cmpLocated $
+                                       freeKiTyVarsAllVars pat_kity_vars_with_dups
+                        ; tv_nms_dups <- mapM (lookupOccRn . unLoc) $
+                                         [ tv | (tv :| (_:_)) <- groups ]
+                              -- Add to the used variables
+                              --  a) any variables that appear *more than once* on the LHS
+                              --     e.g.   F a Int a = Bool
+                              --  b) for associated instances, the variables
+                              --     of the instance decl.  See
+                              --     Note [Unused type variables in family instances]
+                        ; let tv_nms_used = extendNameSetList rhs_fvs $
+                                            inst_tvs ++ tv_nms_dups
+                              inst_tvs = case mb_cls of
+                                           Nothing            -> []
+                                           Just (_, inst_tvs) -> inst_tvs
+                        ; warnUnusedTypePatterns imp_var_names tv_nms_used }
 
                          -- See Note [Renaming associated types]
-                    ; let bad_tvs = case mb_cls of
-                                      Nothing           -> []
-                                      Just (_,cls_tkvs) -> filter is_bad cls_tkvs
-                          var_name_set = mkNameSet all_var_names
-
+                    ; let bad_tvs = maybe [] (filter is_bad . snd) mb_cls
+                          var_name_set = mkNameSet (map hsLTyVarName bndrs'
+                                                    ++ all_imp_var_names)
                           is_bad cls_tkv = cls_tkv `elemNameSet` rhs_fvs
-                                        && not (cls_tkv `elemNameSet` var_name_set)
+                                           && not (cls_tkv `elemNameSet` var_name_set)
                     ; unless (null bad_tvs) (badAssocRhs bad_tvs)
 
-                    ; return ((pats', payload'), rhs_fvs `plusFV` pat_fvs) }
+                    ; return ((bndrs', pats', payload'), rhs_fvs `plusFV` pat_fvs) })
 
        ; let anon_wcs = concatMap collectAnonWildCards pats'
-             all_ibs  = anon_wcs ++ all_var_names
+             all_ibs  = anon_wcs ++ all_imp_var_names
                         -- all_ibs: include anonymous wildcards in the implicit
                         -- binders In a type pattern they behave just like any
                         -- other type variable except for being anoymous.  See
@@ -770,12 +794,25 @@ rnFamInstEqn doc mb_cls rhs_kvars
                       , hsib_body
                           = FamEqn { feqn_ext    = noExt
                                    , feqn_tycon  = tycon'
+                                   , feqn_bndrs  = bndrs' <$ mb_bndrs
                                    , feqn_pats   = pats'
                                    , feqn_fixity = fixity
                                    , feqn_rhs    = payload' } },
                  all_fvs) }
 rnFamInstEqn _ _ _ (HsIB _ (XFamEqn _)) _ = panic "rnFamInstEqn"
 rnFamInstEqn _ _ _ (XHsImplicitBndrs _) _ = panic "rnFamInstEqn"
+
+-- Why is this an error and not a warning?
+-- If we write `x :: forall a. Int`, then we can still use visible type
+-- application with x, like `x @Bool`. The type application does nothing at
+-- all, but it's not improper. (Thus, the user only sees a warning.) In a type
+-- family instance, there is no point whatsoever to having extra variables. We
+-- could just drop them and proceed anyway, but it seems more likely that the
+-- user has made a mistake--thus we throw an error. (RAE, edited by YAC)
+unusedExplicitForAllErr :: LHsTyVarBndr GhcPs -> RnM ()
+unusedExplicitForAllErr (L loc x) = addErrAt loc $
+  text "Explicitly quantified but not used: type variable"
+  <+> quotes (ppr $ hsTyVarName x)
 
 rnTyFamInstDecl :: Maybe (Name, [Name])
                 -> TyFamInstDecl GhcPs
@@ -798,6 +835,7 @@ rnTyFamDefltEqn :: Name
                 -> TyFamDefltEqn GhcPs
                 -> RnM (TyFamDefltEqn GhcRn, FreeVars)
 rnTyFamDefltEqn cls (FamEqn { feqn_tycon  = tycon
+                            , feqn_bndrs  = _ -- should be nothing
                             , feqn_pats   = tyvars
                             , feqn_fixity = fixity
                             , feqn_rhs    = rhs })
@@ -807,6 +845,7 @@ rnTyFamDefltEqn cls (FamEqn { feqn_tycon  = tycon
        ; (rhs', fvs) <- rnLHsType ctx rhs
        ; return (FamEqn { feqn_ext    = noExt
                         , feqn_tycon  = tycon'
+                        , feqn_bndrs  = Nothing
                         , feqn_pats   = tyvars'
                         , feqn_fixity = fixity
                         , feqn_rhs    = rhs' }, fvs) } }
@@ -961,7 +1000,7 @@ rnSrcDerivDecl (DerivDecl _ ty mds overlap)
        ; (mds', ty', fvs)
            <- rnLDerivStrategy DerivDeclCtx mds $ \strat_tvs ppr_via_ty ->
               rnAndReportFloatingViaTvs strat_tvs loc ppr_via_ty "instance" $
-              rnHsSigWcType DerivDeclCtx ty
+              rnHsSigWcType BindUnlessForall DerivDeclCtx ty
        ; return (DerivDecl noExt ty' mds' overlap, fvs) }
   where
     loc = getLoc $ hsib_body $ hswc_body ty
@@ -981,50 +1020,74 @@ standaloneDerivErr
 -}
 
 rnHsRuleDecls :: RuleDecls GhcPs -> RnM (RuleDecls GhcRn, FreeVars)
-rnHsRuleDecls (HsRules _ src rules)
+rnHsRuleDecls (HsRules { rds_src = src
+                       , rds_rules = rules })
   = do { (rn_rules,fvs) <- rnList rnHsRuleDecl rules
-       ; return (HsRules noExt src rn_rules,fvs) }
+       ; return (HsRules { rds_ext = noExt
+                         , rds_src = src
+                         , rds_rules = rn_rules }, fvs) }
 rnHsRuleDecls (XRuleDecls _) = panic "rnHsRuleDecls"
 
 rnHsRuleDecl :: RuleDecl GhcPs -> RnM (RuleDecl GhcRn, FreeVars)
-rnHsRuleDecl (HsRule _ rule_name act vars lhs rhs)
-  = do { let rdr_names_w_loc = map get_var vars
+rnHsRuleDecl (HsRule { rd_name = rule_name
+                     , rd_act  = act
+                     , rd_tyvs = tyvs
+                     , rd_tmvs = tmvs
+                     , rd_lhs  = lhs
+                     , rd_rhs  = rhs })
+  = do { let rdr_names_w_loc = map get_var tmvs
        ; checkDupRdrNames rdr_names_w_loc
        ; checkShadowedRdrNames rdr_names_w_loc
        ; names <- newLocalBndrsRn rdr_names_w_loc
-       ; bindHsRuleVars (snd $ unLoc rule_name) vars names $ \ vars' ->
+       ; let doc = RuleCtx (snd $ unLoc rule_name) -- YAC in refactor, extractHsTyRdrTyVars or something
+       ; bindRuleTyVars doc in_rule tyvs $ \ tyvs' ->
+         bindRuleTmVars doc tyvs' tmvs names $ \ tmvs' ->
     do { (lhs', fv_lhs') <- rnLExpr lhs
        ; (rhs', fv_rhs') <- rnLExpr rhs
        ; checkValidRule (snd $ unLoc rule_name) names lhs' fv_lhs'
-       ; return (HsRule (HsRuleRn fv_lhs' fv_rhs') rule_name act vars'
-                                                                     lhs' rhs',
-                 fv_lhs' `plusFV` fv_rhs') } }
+       ; return (HsRule { rd_ext  = HsRuleRn fv_lhs' fv_rhs'
+                        , rd_name = rule_name
+                        , rd_act  = act
+                        , rd_tyvs = tyvs'
+                        , rd_tmvs = tmvs'
+                        , rd_lhs  = lhs'
+                        , rd_rhs  = rhs' }, fv_lhs' `plusFV` fv_rhs') } }
   where
     get_var (L _ (RuleBndrSig _ v _)) = v
     get_var (L _ (RuleBndr _ v)) = v
     get_var (L _ (XRuleBndr _)) = panic "rnHsRuleDecl"
+    in_rule = text "in the rule" <+> quotes (ppr rule_name)
 rnHsRuleDecl (XRuleDecl _) = panic "rnHsRuleDecl"
 
-bindHsRuleVars :: RuleName -> [LRuleBndr GhcPs] -> [Name]
+bindRuleTmVars :: HsDocContext -> Maybe [XHsRuleTyVarBndr GhcRn]
+               -> [LRuleBndr GhcPs] -> [Name]
                -> ([LRuleBndr GhcRn] -> RnM (a, FreeVars))
                -> RnM (a, FreeVars)
-bindHsRuleVars rule_name vars names thing_inside
+bindRuleTmVars doc tyvs vars names thing_inside
   = go vars names $ \ vars' ->
     bindLocalNamesFV names (thing_inside vars')
   where
-    doc = RuleCtx rule_name
-
     go (L l (RuleBndr _ (L loc _)) : vars) (n : ns) thing_inside
       = go vars ns $ \ vars' ->
         thing_inside (L l (RuleBndr noExt (L loc n)) : vars')
 
     go (L l (RuleBndrSig _ (L loc _) bsig) : vars) (n : ns) thing_inside
-      = rnHsSigWcTypeScoped doc bsig $ \ bsig' ->
+      = rnHsSigWcTypeScoped bind_free_tvs doc bsig $ \ bsig' ->
         go vars ns $ \ vars' ->
         thing_inside (L l (RuleBndrSig noExt (L loc n) bsig') : vars')
 
     go [] [] thing_inside = thing_inside []
     go vars names _ = pprPanic "bindRuleVars" (ppr vars $$ ppr names)
+    
+    bind_free_tvs = case tyvs of Nothing -> AlwaysBind
+                                 Just _  -> NeverBind
+
+bindRuleTyVars :: HsDocContext -> SDoc -> Maybe [XHsRuleTyVarBndr GhcPs] 
+               -> (Maybe [XHsRuleTyVarBndr GhcRn]  -> RnM (b, FreeVars))
+               -> RnM (b, FreeVars)
+bindRuleTyVars doc in_doc (Just bndrs) thing_inside
+  = bindLHsTyVarBndrs doc (Just in_doc) Nothing bndrs (thing_inside . Just)
+bindRuleTyVars _ _ _ thing_inside = thing_inside Nothing
 
 {-
 Note [Rule LHS validity checking]

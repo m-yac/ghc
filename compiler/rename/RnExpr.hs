@@ -310,7 +310,7 @@ rnExpr (RecordUpd { rupd_expr = expr, rupd_flds = rbinds })
                  , fvExpr `plusFV` fvRbinds) }
 
 rnExpr (ExprWithTySig pty expr)
-  = do  { (pty', fvTy)    <- rnHsSigWcType ExprWithTySigCtx pty
+  = do  { (pty', fvTy)    <- rnHsSigWcType BindUnlessForall ExprWithTySigCtx pty
         ; (expr', fvExpr) <- bindSigTyVarsFV (hsWcScopedTvs pty') $
                              rnLExpr expr
         ; return (ExprWithTySig pty' expr', fvExpr `plusFV` fvTy) }

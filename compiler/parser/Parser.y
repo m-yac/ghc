@@ -1,3 +1,4 @@
+
 --                                                              -*-haskell-*-
 -- ---------------------------------------------------------------------------
 -- (c) The University of Glasgow 1997-2003
@@ -82,13 +83,13 @@ import TysWiredIn       ( unitTyCon, unitDataCon, tupleTyCon, tupleDataCon, nilD
                           listTyCon_RDR, consDataCon_RDR )
 
 -- compiler/utils
-import Util             ( looksLikePackageName )
+import Util             ( looksLikePackageName, fstOf3, sndOf3, thdOf3 )
 import GhcPrelude
 
 import qualified GHC.LanguageExtensions as LangExt
 }
 
-%expect 235 -- shift/reduce conflicts
+%expect 236 -- shift/reduce conflicts
 
 {- Last updated: 04 June 2018
 
@@ -315,7 +316,7 @@ sensible meaning, namely the lhs of an implicit binding.
 
 -------------------------------------------------------------------------------
 
-state 752 contains 1 shift/reduce conflicts.
+state 753 contains 1 shift/reduce conflicts.
 
         rule -> STRING rule_activation . rule_forall infixexp '=' exp
 
@@ -332,7 +333,7 @@ doesn't include 'forall'.
 
 -------------------------------------------------------------------------------
 
-state 986 contains 1 shift/reduce conflicts.
+state 991 contains 1 shift/reduce conflicts.
 
         transformqual -> 'then' 'group' . 'using' exp
         transformqual -> 'then' 'group' . 'by' exp 'using' exp
@@ -342,7 +343,29 @@ state 986 contains 1 shift/reduce conflicts.
 
 -------------------------------------------------------------------------------
 
-state 1367 contains 1 shift/reduce conflict.
+state 1087 contains 1 shift/reduce conflicts.
+
+        rule_foralls -> 'forall' rule_vars '.' . 'forall' rule_vars '.'
+    *** rule_foralls -> 'forall' rule_vars '.' .
+    
+    Conflict: 'forall'
+
+Example ambigutiy: '{-# RULES "name" forall a. forall ... #-}'
+
+Here the parser cannot tell whether the second 'forall' is the beginning of
+a term-level quantifier, for example:
+
+'{-# RULES "name" forall a. forall x. id @a x = x #-}'
+
+or a valid variable named 'forall', for example a function @:: Int -> Int@
+
+'{-# RULES "name" forall a. forall 0 = 0 #-}'
+
+Shift means the parser only allows the former.
+
+-------------------------------------------------------------------------------
+
+state 1381 contains 1 shift/reduce conflict.
 
     *** atype -> tyvar .
         tv_bndr -> '(' tyvar . '::' kind ')'
@@ -1124,7 +1147,7 @@ inst_decl :: { LInstDecl GhcPs }
                     (mj AnnType $1:mj AnnInstance $2:(fst $ unLoc $3)) }
 
           -- data/newtype instance declaration
-        | data_or_newtype 'instance' capi_ctype tycl_hdr constrs
+        | data_or_newtype 'instance' capi_ctype tycl_hdr_inst constrs
                           maybe_derivings
             {% amms (mkDataFamInst (comb4 $1 $4 $5 $6) (snd $ unLoc $1) $3 $4
                                       Nothing (reverse (snd  $ unLoc $5))
@@ -1132,7 +1155,7 @@ inst_decl :: { LInstDecl GhcPs }
                     ((fst $ unLoc $1):mj AnnInstance $2:(fst $ unLoc $5)) }
 
           -- GADT instance declaration
-        | data_or_newtype 'instance' capi_ctype tycl_hdr opt_kind_sig
+        | data_or_newtype 'instance' capi_ctype tycl_hdr_inst opt_kind_sig
                  gadt_constrlist
                  maybe_derivings
             {% amms (mkDataFamInst (comb4 $1 $4 $6 $7) (snd $ unLoc $1) $3 $4
@@ -1222,12 +1245,17 @@ ty_fam_inst_eqns :: { Located [LTyFamInstEqn GhcPs] }
         | {- empty -}                 { noLoc [] }
 
 ty_fam_inst_eqn :: { Located ([AddAnn],TyFamInstEqn GhcPs) }
-        : type '=' ctype
-                -- Note the use of type for the head; this allows
-                -- infix type constructors and type patterns
-              {% do { (eqn,ann) <- mkTyFamInstEqn $1 $3
+        : 'forall' tv_bndrs '.' type '=' ctype
+              {% do { hintExplicitForall (getLoc $1)
+                    ; (eqn,ann) <- mkTyFamInstEqn (Just $2) $4 $6
+                    ; ams (sLL $4 $> (mj AnnEqual $5:ann, eqn))
+                          [mu AnnForall $1, mj AnnDot $3]  } }
+        | type '=' ctype
+              {% do { (eqn,ann) <- mkTyFamInstEqn Nothing $1 $3
                     ; return (sLL $1 $> (mj AnnEqual $2:ann, eqn))  } }
-
+              -- Note the use of type for the head; this allows
+              -- infix type constructors and type patterns
+              
 -- Associated type family declarations
 --
 -- * They have a different syntax than on the toplevel (no family special
@@ -1290,13 +1318,13 @@ at_decl_inst :: { LInstDecl GhcPs }
 
         -- data/newtype instance declaration, with optional 'instance' keyword
         -- (can't use opt_instance because you get reduce/reduce errors)
-        | data_or_newtype capi_ctype tycl_hdr constrs maybe_derivings
+        | data_or_newtype capi_ctype tycl_hdr_inst constrs maybe_derivings
                {% amms (mkDataFamInst (comb4 $1 $3 $4 $5) (snd $ unLoc $1) $2 $3
                                     Nothing (reverse (snd $ unLoc $4))
                                             (fmap reverse $5))
                        ((fst $ unLoc $1):(fst $ unLoc $4)) }
 
-        | data_or_newtype 'instance' capi_ctype tycl_hdr constrs maybe_derivings
+        | data_or_newtype 'instance' capi_ctype tycl_hdr_inst constrs maybe_derivings
                {% amms (mkDataFamInst (comb4 $1 $4 $5 $6) (snd $ unLoc $1) $3 $4
                                     Nothing (reverse (snd $ unLoc $5))
                                             (fmap reverse $6))
@@ -1304,7 +1332,7 @@ at_decl_inst :: { LInstDecl GhcPs }
 
         -- GADT instance declaration, with optional 'instance' keyword
         -- (can't use opt_instance because you get reduce/reduce errors)
-        | data_or_newtype capi_ctype tycl_hdr opt_kind_sig
+        | data_or_newtype capi_ctype tycl_hdr_inst opt_kind_sig
                  gadt_constrlist
                  maybe_derivings
                 {% amms (mkDataFamInst (comb4 $1 $3 $5 $6) (snd $ unLoc $1) $2
@@ -1312,7 +1340,7 @@ at_decl_inst :: { LInstDecl GhcPs }
                                 (fmap reverse $6))
                         ((fst $ unLoc $1):(fst $ unLoc $4)++(fst $ unLoc $5)) }
 
-        | data_or_newtype 'instance' capi_ctype tycl_hdr opt_kind_sig
+        | data_or_newtype 'instance' capi_ctype tycl_hdr_inst opt_kind_sig
                  gadt_constrlist
                  maybe_derivings
                 {% amms (mkDataFamInst (comb4 $1 $4 $6 $7) (snd $ unLoc $1) $3
@@ -1360,6 +1388,22 @@ tycl_hdr :: { Located (Maybe (LHsContext GhcPs), LHsType GhcPs) }
                                        >> (return (sLL $1 $> (Just $1, $3)))
                                     }
         | type                      { sL1 $1 (Nothing, $1) }
+
+tycl_hdr_inst :: { Located (Maybe (LHsContext GhcPs), Maybe [LHsTyVarBndr GhcPs], LHsType GhcPs) }
+        : 'forall' tv_bndrs '.' context '=>' type   {% hintExplicitForall (getLoc $1)
+                                                       >> (addAnnotation (gl $4) (toUnicodeAnn AnnDarrow $5) (gl $5)
+                                                           >> ams (sLL $1 $> $ (Just $4, Just $2, $6))
+                                                                  [mu AnnForall $1, mj AnnDot $3])
+                                                    }
+        | 'forall' tv_bndrs '.' type   {% hintExplicitForall (getLoc $1)
+                                          >> ams (sLL $1 $> $ (Nothing, Just $2, $4))
+                                                 [mu AnnForall $1, mj AnnDot $3]
+                                       }
+        | context '=>' type         {% addAnnotation (gl $1) (toUnicodeAnn AnnDarrow $2) (gl $2)
+                                       >> (return (sLL $1 $> (Just $1, Nothing, $3)))
+                                    }
+        | type                      { sL1 $1 (Nothing, Nothing, $1) }
+
 
 capi_ctype :: { Maybe (Located CType) }
 capi_ctype : '{-# CTYPE' STRING STRING '#-}'
@@ -1606,11 +1650,13 @@ rules   :: { OrdList (LRuleDecl GhcPs) }
         |  {- empty -}                 { nilOL }
 
 rule    :: { LRuleDecl GhcPs }
-        : STRING rule_activation rule_forall infixexp '=' exp
-         {%ams (sLL $1 $> $ (HsRule noExt (L (gl $1) (getSTRINGs $1,getSTRING $1))
-                                  ((snd $2) `orElse` AlwaysActive)
-                                  (snd $3) $4 $6))
-               (mj AnnEqual $5 : (fst $2) ++ (fst $3)) }
+        : STRING rule_activation rule_foralls infixexp '=' exp
+         {%ams (sLL $1 $> $ HsRule { rd_ext = noExt
+                                   , rd_name = L (gl $1) (getSTRINGs $1, getSTRING $1)
+                                   , rd_act = (snd $2) `orElse` AlwaysActive
+                                   , rd_tyvs = sndOf3 $3, rd_tmvs = thdOf3 $3
+                                   , rd_lhs = $4, rd_rhs = $6 })
+               (mj AnnEqual $5 : (fst $2) ++ (fstOf3 $3)) }
 
 -- Rules can be specified to be NeverActive, unlike inline/specialize pragmas
 rule_activation :: { ([AddAnn],Maybe Activation) }
@@ -1626,19 +1672,45 @@ rule_explicit_activation :: { ([AddAnn]
         | '[' '~' ']'           { ([mos $1,mj AnnTilde $2,mcs $3]
                                   ,NeverActive) }
 
-rule_forall :: { ([AddAnn],[LRuleBndr GhcPs]) }
-        : 'forall' rule_var_list '.'     { ([mu AnnForall $1,mj AnnDot $3],$2) }
-        | {- empty -}                    { ([],[]) }
+rule_foralls :: { ([AddAnn], Maybe [LHsTyVarBndr GhcPs], [LRuleBndr GhcPs]) }
+        : 'forall' rule_vars '.' 'forall' rule_vars '.'    {% checkRuleTyVarBndrNames (mkRuleTyVarBndrs $2)
+                                                              >> return ([mu AnnForall $1,mj AnnDot $3,
+                                                                          mu AnnForall $4,mj AnnDot $6],
+                                                                         Just (mkRuleTyVarBndrs $2), mkRuleBndrs $5) }
+        | 'forall' rule_vars '.'                           { ([mu AnnForall $1,mj AnnDot $3],
+                                                              Nothing, mkRuleBndrs $2) }
+        | {- empty -}                                      { ([], Nothing, []) }
 
-rule_var_list :: { [LRuleBndr GhcPs] }
-        : rule_var                              { [$1] }
-        | rule_var rule_var_list                { $1 : $2 }
+rule_vars :: { [LRuleTyTmVar] }
+        : rule_var rule_vars                    { $1 : $2 }
+        | {- empty -}                           { [] }
 
-rule_var :: { LRuleBndr GhcPs }
-        : varid                         { sLL $1 $> (RuleBndr noExt $1) }
-        | '(' varid '::' ctype ')'      {% ams (sLL $1 $> (RuleBndrSig noExt $2
-                                                       (mkLHsSigWcType $4)))
+rule_var :: { LRuleTyTmVar }
+        : varid                         { sLL $1 $> (RuleTyTmVar $1 Nothing) }
+        | '(' varid '::' ctype ')'      {% ams (sLL $1 $> (RuleTyTmVar $2 (Just $4)))
                                                [mop $1,mu AnnDcolon $3,mcp $5] }
+
+{- Note [Parsing explicit foralls in Rules]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We really want the above definition of rule_foralls to be:
+
+  rule_foralls : 'forall' tv_bndrs '.' 'forall' rule_vars '.'
+               | 'forall' rule_vars '.'                          
+               | {- empty -}             
+
+where rule_vars (term variables) can be named "forall", "family", or "role",
+but tv_vars (type variables) cannot be. However, such a definition results
+in a reduce/reduce conflict. For example, when parsing:
+> {-# RULE "name" forall a ... #-}
+before the '...' it is impossible to determine whether we should be in the
+first or second case of the above.
+
+This is resolved by using rule_vars (which is more general) for both, and
+ensuring that type-level quantified variables do not have the names "forall",
+"family", or "role" in the function 'checkRuleTyVarBndrNames' in RdrHsSyn.hs
+Thus, whenever the definition of tyvarid (used for tv_bndrs) is changed relative
+to varid (used for rule_vars), 'checkRuleTyVarBndrNames' must be updated.
+-}
 
 -----------------------------------------------------------------------------
 -- Warnings and deprecations (c.f. rules)
@@ -3280,6 +3352,8 @@ tyvarid :: { Located RdrName }
         | 'unsafe'         { sL1 $1 $! mkUnqual tvName (fsLit "unsafe") }
         | 'safe'           { sL1 $1 $! mkUnqual tvName (fsLit "safe") }
         | 'interruptible'  { sL1 $1 $! mkUnqual tvName (fsLit "interruptible") }
+        -- If this changes relative to varid, update 'checkRuleTyVarBndrNames' in RdrHsSyn.hs
+        -- See Note [Parsing explicit foralls in Rules]
 
 -----------------------------------------------------------------------------
 -- Variables
@@ -3320,6 +3394,8 @@ varid :: { Located RdrName }
         | 'forall'         { sL1 $1 $! mkUnqual varName (fsLit "forall") }
         | 'family'         { sL1 $1 $! mkUnqual varName (fsLit "family") }
         | 'role'           { sL1 $1 $! mkUnqual varName (fsLit "role") }
+        -- If this changes relative to tyvarid, update 'checkRuleTyVarBndrNames' in RdrHsSyn.hs
+        -- See Note [Parsing explicit foralls in Rules]
 
 qvarsym :: { Located RdrName }
         : varsym                { $1 }

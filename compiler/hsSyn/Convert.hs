@@ -295,8 +295,8 @@ cvtDec (DataFamilyD tc tvs kind)
        ; returnJustL $ TyClD noExt $ FamDecl noExt $
          FamilyDecl noExt DataFamily tc' tvs' Prefix result Nothing }
 
-cvtDec (DataInstD ctxt tc tys ksig constrs derivs)
-  = do { (ctxt', tc', typats') <- cvt_tyinst_hdr ctxt tc tys
+cvtDec (DataInstD ctxt tc bndrs tys ksig constrs derivs)
+  = do { (ctxt', tc', bndrs', typats') <- cvt_tyinst_hdr ctxt tc bndrs tys
        ; ksig' <- cvtKind `traverse` ksig
        ; cons' <- mapM cvtConstr constrs
        ; derivs' <- cvtDerivs derivs
@@ -310,12 +310,14 @@ cvtDec (DataInstD ctxt tc tys ksig constrs derivs)
            { dfid_ext = noExt
            , dfid_inst = DataFamInstDecl { dfid_eqn = mkHsImplicitBndrs $
                            FamEqn { feqn_ext = noExt
-                                  , feqn_tycon = tc', feqn_pats = typats'
+                                  , feqn_tycon = tc'
+                                  , feqn_bndrs = bndrs'
+                                  , feqn_pats = typats'
                                   , feqn_rhs = defn
                                   , feqn_fixity = Prefix } }}}
 
-cvtDec (NewtypeInstD ctxt tc tys ksig constr derivs)
-  = do { (ctxt', tc', typats') <- cvt_tyinst_hdr ctxt tc tys
+cvtDec (NewtypeInstD ctxt tc bndrs tys ksig constr derivs)
+  = do { (ctxt', tc', bndrs', typats') <- cvt_tyinst_hdr ctxt tc bndrs tys
        ; ksig' <- cvtKind `traverse` ksig
        ; con' <- cvtConstr constr
        ; derivs' <- cvtDerivs derivs
@@ -328,7 +330,9 @@ cvtDec (NewtypeInstD ctxt tc tys ksig constr derivs)
            { dfid_ext = noExt
            , dfid_inst = DataFamInstDecl { dfid_eqn = mkHsImplicitBndrs $
                            FamEqn { feqn_ext = noExt
-                                  , feqn_tycon = tc', feqn_pats = typats'
+                                  , feqn_tycon = tc'
+                                  , feqn_bndrs = bndrs'
+                                  , feqn_pats = typats'
                                   , feqn_rhs = defn
                                   , feqn_fixity = Prefix } }}}
 
@@ -402,12 +406,14 @@ cvtDec (TH.PatSynSigD nm ty)
 
 ----------------
 cvtTySynEqn :: Located RdrName -> TySynEqn -> CvtM (LTyFamInstEqn GhcPs)
-cvtTySynEqn tc (TySynEqn lhs rhs)
-  = do  { lhs' <- mapM (wrap_apps <=< cvtType) lhs
+cvtTySynEqn tc (TySynEqn mb_bndrs lhs rhs)
+  = do  { mb_bndrs' <- traverse (mapM cvt_tv) mb_bndrs
+        ; lhs' <- mapM (wrap_apps <=< cvtType) lhs
         ; rhs' <- cvtType rhs
         ; returnL $ mkHsImplicitBndrs
                   $ FamEqn { feqn_ext    = noExt
                            , feqn_tycon  = tc
+                           , feqn_bndrs  = mb_bndrs'
                            , feqn_pats   = lhs'
                            , feqn_fixity = Prefix
                            , feqn_rhs    = rhs' } }
@@ -445,15 +451,17 @@ cvt_tycl_hdr cxt tc tvs
        ; return (cxt', tc', tvs')
        }
 
-cvt_tyinst_hdr :: TH.Cxt -> TH.Name -> [TH.Type]
+cvt_tyinst_hdr :: TH.Cxt -> TH.Name -> Maybe [TH.TyVarBndr] -> [TH.Type]
                -> CvtM ( LHsContext GhcPs
                        , Located RdrName
+                       , Maybe [LHsTyVarBndr GhcPs]
                        , HsTyPats GhcPs)
-cvt_tyinst_hdr cxt tc tys
-  = do { cxt' <- cvtContext cxt
-       ; tc'  <- tconNameL tc
-       ; tys' <- mapM (wrap_apps <=< cvtType) tys
-       ; return (cxt', tc', tys') }
+cvt_tyinst_hdr cxt tc bndrs tys
+  = do { cxt'   <- cvtContext cxt
+       ; tc'    <- tconNameL tc
+       ; bndrs' <- traverse (mapM cvt_tv) bndrs
+       ; tys'   <- mapM (wrap_apps <=< cvtType) tys
+       ; return (cxt', tc', bndrs', tys') }
 
 ----------------
 cvt_tyfam_head :: TypeFamilyHead
@@ -698,17 +706,26 @@ cvtPragmaD (SpecialiseInstP ty)
        ; returnJustL $ Hs.SigD noExt $
          SpecInstSig noExt (SourceText "{-# SPECIALISE") (mkLHsSigType ty') }
 
-cvtPragmaD (RuleP nm bndrs lhs rhs phases)
+cvtPragmaD (RuleP nm ty_bndrs tm_bndrs lhs rhs phases)
   = do { let nm' = mkFastString nm
        ; let act = cvtPhases phases AlwaysActive
-       ; bndrs' <- mapM cvtRuleBndr bndrs
+       ; ty_bndrs' <- traverse (mapM cvt_tv) ty_bndrs
+       ; tm_bndrs' <- mapM cvtRuleBndr tm_bndrs
        ; lhs'   <- cvtl lhs
        ; rhs'   <- cvtl rhs
        ; returnJustL $ Hs.RuleD noExt
-            $ HsRules noExt (SourceText "{-# RULES")
-                      [noLoc $ HsRule noExt (noLoc (SourceText nm,nm')) act
-                                                  bndrs' lhs' rhs']
-       }
+            $ HsRules { rds_ext = noExt
+                      , rds_src = SourceText "{-# RULES"
+                      , rds_rules = [noLoc $
+                          HsRule { rd_ext  = noExt
+                                 , rd_name = (noLoc (SourceText nm,nm'))
+                                 , rd_act  = act
+                                 , rd_tyvs = ty_bndrs'
+                                 , rd_tmvs = tm_bndrs'
+                                 , rd_lhs  = lhs'
+                                 , rd_rhs  = rhs' }] }
+                
+          }
 
 cvtPragmaD (AnnP target exp)
   = do { exp' <- cvtl exp

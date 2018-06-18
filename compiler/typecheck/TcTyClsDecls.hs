@@ -1289,6 +1289,7 @@ tcDefaultAssocDecl _ (d1:_:_)
                 <+> ppr (feqn_tycon (unLoc d1)))
 
 tcDefaultAssocDecl fam_tc [L loc (FamEqn { feqn_tycon = L _ tc_name
+                                         , feqn_bndrs = mb_expl_bndrs
                                          , feqn_pats = hs_tvs
                                          , feqn_rhs = rhs })]
   | HsQTvs { hsq_ext = HsQTvsRn { hsq_implicit = imp_vars}
@@ -1321,7 +1322,7 @@ tcDefaultAssocDecl fam_tc [L loc (FamEqn { feqn_tycon = L _ tc_name
           -- type default LHS can mention *different* type variables than the
           -- enclosing class. So it's treated more as a freestanding beast.
        ; (pats', rhs_ty)
-           <- tcFamTyPats fam_tc Nothing all_vars pats
+           <- tcFamTyPats fam_tc Nothing all_vars mb_expl_bndrs pats
               (kcTyFamEqnRhs Nothing rhs) $
               \tvs pats rhs_kind ->
               do { rhs_ty <- solveEqualities $
@@ -1341,7 +1342,7 @@ tcDefaultAssocDecl fam_tc [L loc (FamEqn { feqn_tycon = L _ tc_name
            -- in checkValidClass
      }
 tcDefaultAssocDecl _ [L _ (XFamEqn _)] = panic "tcDefaultAssocDecl"
-tcDefaultAssocDecl _ [L _ (FamEqn _ (L _ _) (XLHsQTyVars _) _ _)]
+tcDefaultAssocDecl _ [L _ (FamEqn _ (L _ _) _ (XLHsQTyVars _) _ _)]
   = panic "tcDefaultAssocDecl"
 
 {- Note [Type-checking default assoc decls]
@@ -1368,22 +1369,24 @@ proper tcMatchTys here.)  -}
 -------------------------
 kcTyFamInstEqn :: TcTyCon -> LTyFamInstEqn GhcRn -> TcM ()
 kcTyFamInstEqn tc_fam_tc
-    (L loc (HsIB { hsib_ext = HsIBRn { hsib_vars = tv_names }
+    (L loc (HsIB { hsib_ext = HsIBRn { hsib_vars = imp_vars }
                  , hsib_body = FamEqn { feqn_tycon  = L _ eqn_tc_name
+                                      , feqn_bndrs  = mb_expl_bndrs
                                       , feqn_pats   = pats
                                       , feqn_rhs    = hs_ty }}))
   = setSrcSpan loc $
     do { traceTc "kcTyFamInstEqn" (vcat
            [ text "tc_name =" <+> ppr eqn_tc_name
            , text "fam_tc =" <+> ppr tc_fam_tc <+> dcolon <+> ppr (tyConKind tc_fam_tc)
-           , text "hsib_vars =" <+> ppr tv_names
+           , text "hsib_vars =" <+> ppr imp_vars
+           , text "feqn_bndrs =" <+> ppr mb_expl_bndrs
            , text "feqn_pats =" <+> ppr pats ])
        ; checkTc (fam_name == eqn_tc_name)
                  (wrongTyFamName fam_name eqn_tc_name)
           -- this check reports an arity error instead of a kind error; easier for user
        ; checkTc (pats `lengthIs` vis_arity) $
                   wrongNumberOfParmsErr vis_arity
-       ; kcFamTyPats tc_fam_tc tv_names pats $ \ rhs_kind ->
+       ; kcFamTyPats tc_fam_tc imp_vars mb_expl_bndrs pats $ \ rhs_kind ->
          discardResult $ kcTyFamEqnRhs Nothing hs_ty rhs_kind }
   where
     fam_name = tyConName tc_fam_tc
@@ -1421,13 +1424,14 @@ tcTyFamInstEqn :: TcTyCon -> Maybe ClsInstInfo -> LTyFamInstEqn GhcRn
 -- Needs to be here, not in TcInstDcls, because closed families
 -- (typechecked here) have TyFamInstEqns
 tcTyFamInstEqn fam_tc mb_clsinfo
-    (L loc (HsIB { hsib_ext = HsIBRn { hsib_vars = tv_names }
+    (L loc (HsIB { hsib_ext = HsIBRn { hsib_vars = imp_vars }
                  , hsib_body = FamEqn { feqn_tycon  = L _ eqn_tc_name
+                                      , feqn_bndrs  = mb_expl_bndrs
                                       , feqn_pats   = pats
                                       , feqn_rhs    = hs_ty }}))
   = ASSERT( getName fam_tc == eqn_tc_name )
     setSrcSpan loc $
-    tcFamTyPats fam_tc mb_clsinfo tv_names pats
+    tcFamTyPats fam_tc mb_clsinfo imp_vars mb_expl_bndrs pats
                 (kcTyFamEqnRhs mb_clsinfo hs_ty) $
                     \tvs pats res_kind ->
     do { rhs_ty <- solveEqualities $ tcCheckLHsType hs_ty res_kind
@@ -1456,6 +1460,7 @@ kcDataDefn :: Maybe (VarEnv Kind) -- ^ Possibly, instantiations for vars
 kcDataDefn mb_kind_env
            (DataFamInstDecl { dfid_eqn = HsIB { hsib_body =
               FamEqn { feqn_tycon  = fam_name
+                     , feqn_bndrs  = mb_bndrs
                      , feqn_pats   = pats
                      , feqn_fixity = fixity
                      , feqn_rhs    = HsDataDefn { dd_ctxt = ctxt
@@ -1503,10 +1508,10 @@ kcDataDefn mb_kind_env
         ; return (new_args, lhs_ki) }
   where
     bogus_ty   = pprPanic "kcDataDefn" (ppr fam_name <+> ppr pats)
-    pp_fam_app = pprFamInstLHS fam_name pats fixity (unLoc ctxt) mb_kind
+    pp_fam_app = pprFamInstLHS fam_name mb_bndrs pats fixity (unLoc ctxt) mb_kind
 kcDataDefn _ (DataFamInstDecl (XHsImplicitBndrs _)) _
   = panic "kcDataDefn"
-kcDataDefn _ (DataFamInstDecl (HsIB _ (FamEqn _ _ _ _ (XHsDataDefn _)))) _
+kcDataDefn _ (DataFamInstDecl (HsIB _ (FamEqn _ _ _ _ _ (XHsDataDefn _)))) _
   = panic "kcDataDefn"
 kcDataDefn _ (DataFamInstDecl (HsIB _ (XFamEqn _))) _
   = panic "kcDataDefn"
@@ -1557,12 +1562,14 @@ two bad things could happen:
 -----------------
 kcFamTyPats :: TcTyCon
             -> [Name]
+            -> Maybe [LHsTyVarBndr GhcRn]
             -> HsTyPats GhcRn
             -> (TcKind -> TcM ())
             -> TcM ()
-kcFamTyPats tc_fam_tc tv_names arg_pats kind_checker
+kcFamTyPats tc_fam_tc imp_vars mb_expl_bndrs arg_pats kind_checker
   = discardResult $
-    kcImplicitTKBndrs tv_names $
+    kcImplicitTKBndrs imp_vars $
+    kcExplicitTKBndrs (fromMaybe [] mb_expl_bndrs) $
     do { let loc     = nameSrcSpan name
              lhs_fun = L loc (HsTyVar noExt NotPromoted (L loc name))
                -- lhs_fun is for error messages only
@@ -1578,6 +1585,7 @@ kcFamTyPats tc_fam_tc tv_names arg_pats kind_checker
 tcFamTyPats :: TyCon
             -> Maybe ClsInstInfo
             -> [Name]          -- Implicitly bound kind/type variable names
+            -> Maybe [LHsTyVarBndr GhcRn]
             -> HsTyPats GhcRn  -- Type patterns
             -> (TcKind -> TcM ([TcType], TcKind))
                 -- kind-checker for RHS
@@ -1598,7 +1606,7 @@ tcFamTyPats :: TyCon
 -- In that case, the type variable 'a' will *already be in scope*
 -- (and, if C is poly-kinded, so will its kind parameter).
 tcFamTyPats fam_tc mb_clsinfo
-            tv_names arg_pats kind_checker thing_inside
+            imp_vars mb_expl_bndrs arg_pats kind_checker thing_inside
   = do { -- First, check the arity.
          -- If we wait until validity checking, we'll get kind
          -- errors below when an arity error will be much easier to
@@ -1613,9 +1621,10 @@ tcFamTyPats fam_tc mb_clsinfo
          wrongNumberOfParmsErr vis_arity
                       -- report only explicit arguments
 
-       ; (fam_used_tvs, (typats, (more_typats, res_kind)))
+       ; (imp_tvs, (_, (typats, (more_typats, res_kind))))
             <- solveEqualities $  -- See Note [Constraints in patterns]
-               tcImplicitTKBndrs FamInstSkol tv_names $
+               tcImplicitTKBndrs FamInstSkol imp_vars $
+               tcExplicitTKBndrs FamInstSkol (fromMaybe [] mb_expl_bndrs) $
                do { let loc = nameSrcSpan fam_name
                         lhs_fun = L loc (HsTyVar noExt NotPromoted
                                                                (L loc fam_name))
@@ -1663,6 +1672,7 @@ tcFamTyPats fam_tc mb_clsinfo
            -- bit is cleverer.
 
        ; traceTc "tcFamTyPats" (ppr (getName fam_tc)
+                                $$ ppr mb_expl_bndrs
                                 $$ ppr all_pats $$ ppr qtkvs)
            -- Don't print out too much, as we might be in the knot
 
@@ -1670,13 +1680,14 @@ tcFamTyPats fam_tc mb_clsinfo
        ; let all_mentioned_tvs = mkVarSet qtkvs
                                    -- qtkvs has all the tyvars bound by LHS
                                    -- type patterns
-             unmentioned_tvs   = filterOut (`elemVarSet` all_mentioned_tvs)
-                                           fam_used_tvs
+             unmentioned_imp_tvs = filterOut (`elemVarSet` all_mentioned_tvs) imp_tvs
+          -- unmentioned_exp_tvs = filterOut (`elemVarSet` all_mentioned_tvs) exp_tvs
+          -- QYAC (for RAE) hypothetically unused exp_tvs should have already been caught, right?
                                    -- If there are tyvars left over, we can
                                    -- assume they're free-floating, since they
                                    -- aren't bound by a type pattern
        ; checkNoErrs $ reportFloatingKvs fam_name flav
-                                         qtkvs unmentioned_tvs
+                                         qtkvs unmentioned_imp_tvs
 
        ; scopeTyVars FamInstSkol qtkvs $
             -- Extend envt with TcTyVars not TyVars, because the
