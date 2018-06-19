@@ -1621,7 +1621,7 @@ tcFamTyPats fam_tc mb_clsinfo
          wrongNumberOfParmsErr vis_arity
                       -- report only explicit arguments
 
-       ; (imp_tvs, (_, (typats, (more_typats, res_kind))))
+       ; (imp_tvs, (exp_tvs, (typats, (more_typats, res_kind))))
             <- solveEqualities $  -- See Note [Constraints in patterns]
                tcImplicitTKBndrs FamInstSkol imp_vars $
                tcExplicitTKBndrs FamInstSkol (fromMaybe [] mb_expl_bndrs) $
@@ -1681,13 +1681,16 @@ tcFamTyPats fam_tc mb_clsinfo
                                    -- qtkvs has all the tyvars bound by LHS
                                    -- type patterns
              unmentioned_imp_tvs = filterOut (`elemVarSet` all_mentioned_tvs) imp_tvs
-          -- unmentioned_exp_tvs = filterOut (`elemVarSet` all_mentioned_tvs) exp_tvs
-          -- QYAC (for RAE) hypothetically unused exp_tvs should have already been caught, right?
                                    -- If there are tyvars left over, we can
                                    -- assume they're free-floating, since they
                                    -- aren't bound by a type pattern
        ; checkNoErrs $ reportFloatingKvs fam_name flav
                                          qtkvs unmentioned_imp_tvs
+                                
+            -- Error if exp_tvs contains anything that is still unused.
+            -- See Note [Unused explicitly bound variables in a family pattern]
+       ; let unmentioned_exp_tvs = filterOut (`elemVarSet` all_mentioned_tvs) exp_tvs
+       ; checkNoErrs $ mapM_ (unusedExplicitForAllErr . Var.varName) unmentioned_exp_tvs
 
        ; scopeTyVars FamInstSkol qtkvs $
             -- Extend envt with TcTyVars not TyVars, because the
@@ -1699,8 +1702,34 @@ tcFamTyPats fam_tc mb_clsinfo
     flav      = tyConFlavour fam_tc
     vis_arity = length (tyConVisibleTyVars fam_tc)
 
+unusedExplicitForAllErr :: Name -> RnM ()
+unusedExplicitForAllErr n = addErrAt (nameSrcSpan n) $
+  text "Explicitly quantified but not used in LHS pattern: type variable"
+  <+> quotes (ppr n)
 
 {-
+
+Note [Unused explicitly bound variables in a family pattern]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Why is 'unusedExplicitForAllErr' not just a warning?
+
+Consider the following examples:
+
+  type instance F a = Maybe b
+  type instance forall b. F a = Bool
+  type instance forall b. F a = Maybe b
+  
+In every case, b is a type variable not determined by the LHS pattern. The
+first is caught by the renamer, but we catch the last two here. Perhaps one 
+could argue that the second should be accepted, albeit with a warning, but
+consider the fact that in a type family instance, there is no way to interact
+with such a varable. At least with @x :: forall a. Int@ we can use visibile
+type application, like @x \@Bool 1@. (Of course it does nothing, but it is
+permissible.) In the type family case, the only sensible explanation is that
+the user has made a mistake -- thus we throw an error.
+
+
 Note [Constraints in patterns]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 NB: This isn't the whole story. See comment in tcFamTyPats.

@@ -51,7 +51,7 @@ import NameEnv
 import Avail
 import Outputable
 import Bag
-import BasicTypes       ( RuleName, pprRuleName )
+import BasicTypes       ( pprRuleName )
 import FastString
 import SrcLoc
 import DynFlags
@@ -65,10 +65,10 @@ import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
 import Control.Arrow ( first )
-import Data.List ( mapAccumL, partition )
+import Data.List ( mapAccumL )
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty ( NonEmpty(..) )
-import Data.Maybe ( isJust, maybe, fromMaybe )
+import Data.Maybe ( maybe, fromMaybe )
 import qualified Data.Set as Set ( difference, fromList, toList, null )
 
 {- | @rnSourceDecl@ "renames" declarations.
@@ -719,7 +719,8 @@ rnFamInstEqn doc mb_cls rhs_kvars
                           Nothing             -> freeKiTyVarsAllVars pat_kity_vars
        ; imp_var_names <- mapM (newTyVarNameRn mb_cls . L loc . unLoc) imp_vars
        
-       ; let bnd_vars = map hsLTyVarLocName (fromMaybe [] mb_bndrs)
+       ; let bndrs = fromMaybe [] mb_bndrs
+             bnd_vars = map hsLTyVarLocName bndrs
              payload_kvars = filterOut (`elemRdr` (bnd_vars ++ imp_vars)) rhs_kvars
              -- Make sure to filter out the kind variables that were explicitly
              -- bound in the type patterns.
@@ -728,19 +729,12 @@ rnFamInstEqn doc mb_cls rhs_kvars
          -- all names not bound in an explict forall
        ; let all_imp_var_names = imp_var_names ++ payload_kvar_names
        
-       ; let (bndrs_used, bndrs_unused)
-               = partition (\x -> (hsLTyVarLocName x) `elemRdr`
-                                  (freeKiTyVarsAllVars pat_kity_vars))
-                           (fromMaybe [] mb_bndrs)
-         -- Error on unused explicitly quantified binders
-       ; mapM_ unusedExplicitForAllErr bndrs_unused
-       
              -- All the free vars of the family patterns
              -- with a sensible binding location
        ; ((bndrs', pats', payload'), fvs)
               <- bindLocalNamesFV all_imp_var_names $
                  bindLHsTyVarBndrs doc (Just $ inHsDocContext doc)
-                                   mb_cls bndrs_used (\bndrs' ->
+                                   mb_cls bndrs (\bndrs' ->
                    -- ^ only bring into scope explicitly quantified bndrs that
                    -- are actually used on the LHS!
                  do { (pats', pat_fvs) <- rnLHsTypes (FamPatCtx tycon) pats
@@ -801,18 +795,6 @@ rnFamInstEqn doc mb_cls rhs_kvars
                  all_fvs) }
 rnFamInstEqn _ _ _ (HsIB _ (XFamEqn _)) _ = panic "rnFamInstEqn"
 rnFamInstEqn _ _ _ (XHsImplicitBndrs _) _ = panic "rnFamInstEqn"
-
--- Why is this an error and not a warning?
--- If we write `x :: forall a. Int`, then we can still use visible type
--- application with x, like `x @Bool`. The type application does nothing at
--- all, but it's not improper. (Thus, the user only sees a warning.) In a type
--- family instance, there is no point whatsoever to having extra variables. We
--- could just drop them and proceed anyway, but it seems more likely that the
--- user has made a mistake--thus we throw an error. (RAE, edited by YAC)
-unusedExplicitForAllErr :: LHsTyVarBndr GhcPs -> RnM ()
-unusedExplicitForAllErr (L loc x) = addErrAt loc $
-  text "Explicitly quantified but not used: type variable"
-  <+> quotes (ppr $ hsTyVarName x)
 
 rnTyFamInstDecl :: Maybe (Name, [Name])
                 -> TyFamInstDecl GhcPs

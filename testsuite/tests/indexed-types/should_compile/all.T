@@ -94,6 +94,9 @@ test('GivenCheckSwap', normal, compile, [''])
 test('GivenCheckDecomp', normal, compile, [''])
 test('GivenCheckTop', normal, compile, [''])
 
+test('ExplicitForAllFams1', normal, compile, [''])
+test('ExplicitForAllFams2', normal, compile, [''])
+
 # A very delicate test
 test('Gentle', normal, compile, [''])
 
