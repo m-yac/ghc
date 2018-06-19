@@ -735,8 +735,6 @@ rnFamInstEqn doc mb_cls rhs_kvars
               <- bindLocalNamesFV all_imp_var_names $
                  bindLHsTyVarBndrs doc (Just $ inHsDocContext doc)
                                    mb_cls bndrs (\bndrs' ->
-                   -- ^ only bring into scope explicitly quantified bndrs that
-                   -- are actually used on the LHS!
                  do { (pats', pat_fvs) <- rnLHsTypes (FamPatCtx tycon) pats
                     ; (payload', rhs_fvs) <- rn_payload doc payload
 
