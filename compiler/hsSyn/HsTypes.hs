@@ -1290,7 +1290,7 @@ pprHsForAllExtra :: (OutputableBndrId (GhcPass p))
 pprHsForAllExtra extra qtvs cxt
   = pp_forall <+> pprHsContextExtra (isJust extra) (unLoc cxt)
   where
-    pp_forall | null qtvs = forAllLit <+> dot -- YAC
+    pp_forall | null qtvs = whenPprDebug (forAllLit <> dot) -- QYAC
               | otherwise = forAllLit <+> interppSP qtvs <> dot
 
 -- | Version of 'pprHsForall' or 'pprHsForallExtra' that will always print
