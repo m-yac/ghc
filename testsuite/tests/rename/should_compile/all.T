@@ -157,3 +157,5 @@ test('T14881', [], multimod_compile, ['T14881', '-W'])
 test('T14487', [], multimod_compile, ['T14487', '-v0'])
 test('T14747', [], multimod_compile, ['T14747', '-v0'])
 test('T15149', [], multimod_compile, ['T15149', '-v0'])
+
+test('ExplicitForAllRules1', normal, compile, ['-Wunused-foralls'])

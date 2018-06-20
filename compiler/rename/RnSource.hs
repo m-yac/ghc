@@ -1036,7 +1036,7 @@ rnHsRuleDecl (HsRule { rd_name = rule_name
     get_var (L _ (RuleBndrSig _ v _)) = v
     get_var (L _ (RuleBndr _ v)) = v
     get_var (L _ (XRuleBndr _)) = panic "rnHsRuleDecl"
-    in_rule = text "in the rule" <+> quotes (ppr rule_name)
+    in_rule = text "in the rule" <+> pprFullRuleName rule_name
 rnHsRuleDecl (XRuleDecl _) = panic "rnHsRuleDecl"
 
 bindRuleTmVars :: HsDocContext -> Maybe [XHsRuleTyVarBndr GhcRn]

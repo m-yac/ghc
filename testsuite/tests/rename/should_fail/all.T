@@ -131,3 +131,6 @@ test('T13847', normal, multimod_compile_fail, ['T13847','-v0'])
 test('T14307', normal, compile_fail, [''])
 test('T14591', normal, compile_fail, [''])
 test('T15214', normal, compile_fail, [''])
+
+test('ExplicitForAllRules2', normal, compile_fail, [''])
+test('ExplicitForAllRules3', normal, compile_fail, ['-Wall'])
