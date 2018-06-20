@@ -1019,7 +1019,7 @@ rnHsRuleDecl (HsRule { rd_name = rule_name
        ; checkDupRdrNames rdr_names_w_loc
        ; checkShadowedRdrNames rdr_names_w_loc
        ; names <- newLocalBndrsRn rdr_names_w_loc
-       ; let doc = RuleCtx (snd $ unLoc rule_name) -- YAC in refactor, extractHsTyRdrTyVars or something
+       ; let doc = RuleCtx (snd $ unLoc rule_name)
        ; bindRuleTyVars doc in_rule tyvs $ \ tyvs' ->
          bindRuleTmVars doc tyvs' tmvs names $ \ tmvs' ->
     do { (lhs', fv_lhs') <- rnLExpr lhs

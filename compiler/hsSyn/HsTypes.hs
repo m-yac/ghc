@@ -1290,8 +1290,8 @@ pprHsForAllExtra :: (OutputableBndrId (GhcPass p))
 pprHsForAllExtra extra qtvs cxt
   = pp_forall <+> pprHsContextExtra (isJust extra) (unLoc cxt)
   where
-    pp_forall | null qtvs = whenPprDebug (forAllLit <> dot) -- QYAC
-              | otherwise = forAllLit <+> interppSP qtvs <> dot
+    pp_forall | null qtvs = whenPprDebug (forAllLit <> dot) -- <-- YAC to RAE: I ended up preseriving this behavior
+              | otherwise = forAllLit <+> interppSP qtvs <> dot -- where it's useful (i.e. ConDecls)
 
 -- | Version of 'pprHsForall' or 'pprHsForallExtra' that will always print
 -- @forall.@ when passed @Just []@. Prints nothing if passed 'Nothing'

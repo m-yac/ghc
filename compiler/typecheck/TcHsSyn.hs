@@ -1410,8 +1410,7 @@ zonkRules :: ZonkEnv -> [LRuleDecl GhcTcId] -> TcM [LRuleDecl GhcTc]
 zonkRules env rs = mapM (wrapLocM (zonkRule env)) rs
 
 zonkRule :: ZonkEnv -> RuleDecl GhcTcId -> TcM (RuleDecl GhcTc)
-zonkRule env rule@(HsRule { rd_tyvs = ty_bndrs -- <- YAC refactoring
-                          , rd_tmvs = tm_bndrs{-::[RuleBndr TcId]-}
+zonkRule env rule@(HsRule { rd_tmvs = tm_bndrs{-::[RuleBndr TcId]-}
                           , rd_lhs = lhs
                           , rd_rhs = rhs })
   = do { (env_inside, new_tm_bndrs) <- mapAccumLM zonk_tm_bndr env tm_bndrs
@@ -1422,8 +1421,7 @@ zonkRule env rule@(HsRule { rd_tyvs = ty_bndrs -- <- YAC refactoring
        ; new_lhs <- zonkLExpr env_lhs    lhs
        ; new_rhs <- zonkLExpr env_inside rhs
 
-       ; return $ rule { rd_tyvs = ty_bndrs       -- QYAC This ok w/ GHC style?
-                       , rd_tmvs = new_tm_bndrs
+       ; return $ rule { rd_tmvs = new_tm_bndrs  -- QYAC This ok w/ GHC style?
                        , rd_lhs  = new_lhs
                        , rd_rhs  = new_rhs } }
   where

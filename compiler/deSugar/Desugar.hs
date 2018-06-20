@@ -380,7 +380,6 @@ Reason
 dsRule :: LRuleDecl GhcTc -> DsM (Maybe CoreRule)
 dsRule (L loc (HsRule { rd_name = name
                       , rd_act  = rule_act
-                      , rd_tyvs = _ -- <- YAC refactoring
                       , rd_tmvs = vars
                       , rd_lhs  = lhs
                       , rd_rhs  = rhs }))
