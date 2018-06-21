@@ -651,7 +651,7 @@ repRuleD (L loc (HsRule { rd_name = n
                         , rd_tmvs = tm_bndrs
                         , rd_lhs = lhs
                         , rd_rhs = rhs }))
-  = do { let bndr_names = map hsLTyVarName (fromMaybe [] ty_bndrs) -- QYAC I do want to do this, right?
+  = do { let bndr_names = map hsLTyVarName (fromMaybe [] ty_bndrs)
                           ++ concatMap ruleBndrNames tm_bndrs
        ; ss <- mkGenSyms bndr_names
        ; rule1 <- addBinds ss $

@@ -133,4 +133,3 @@ test('T14591', normal, compile_fail, [''])
 test('T15214', normal, compile_fail, [''])
 
 test('ExplicitForAllRules2', normal, compile_fail, [''])
-test('ExplicitForAllRules3', normal, compile_fail, ['-Wall'])

@@ -77,18 +77,13 @@ tcRule (HsRule { rd_ext  = ext
     do { traceTc "---- Rule ------" (pprFullRuleName name)
 
         -- Note [Typechecking rules]
-        -- TODORAE add comment about 'lvl' (TODOYAC)
+        -- TODORAE add comment about 'lvl'
        ; ((tv_bndrs, id_bndrs, lvl), bndr_wanted) <- captureConstraints $
                                                      tcRuleBndrs ty_bndrs tm_bndrs
               -- bndr_wanted constraints can include wildcard hole
               -- constraints, which we should not forget about.
               -- It may mention the skolem type variables bound by
               -- the RULE.  c.f. Trac #10072
-       
-         -- QYAC remove? I found it useful, but it might add clutter...
-       ; traceTc "tcRule 0" (vcat [ pprFullRuleName name
-                                  , ppr tv_bndrs
-                                  , ppr id_bndrs ])
        
        ; (lhs', lhs_wanted, rhs', rhs_wanted, rule_ty)
             <- setTcLevel lvl $

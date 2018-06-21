@@ -1421,7 +1421,7 @@ zonkRule env rule@(HsRule { rd_tmvs = tm_bndrs{-::[RuleBndr TcId]-}
        ; new_lhs <- zonkLExpr env_lhs    lhs
        ; new_rhs <- zonkLExpr env_inside rhs
 
-       ; return $ rule { rd_tmvs = new_tm_bndrs  -- QYAC This ok w/ GHC style?
+       ; return $ rule { rd_tmvs = new_tm_bndrs
                        , rd_lhs  = new_lhs
                        , rd_rhs  = new_rhs } }
   where
