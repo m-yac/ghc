@@ -81,6 +81,10 @@ test('T2205', normal, compile, [''])
 
 test('T2334', normal, compile, [''])
 test('T2506', normal, compile, [''])
+
+test('ExplicitForAllRules1', normal, compile, ['-Wunused-foralls'])
+test('T2600', normal, compile, [''])
+
 test('T2914', normal, compile, [''])
 test('T3221', normal, compile, [''])
 test('T3262', normal, compile, [''])
@@ -157,5 +161,3 @@ test('T14881', [], multimod_compile, ['T14881', '-W'])
 test('T14487', [], multimod_compile, ['T14487', '-v0'])
 test('T14747', [], multimod_compile, ['T14747', '-v0'])
 test('T15149', [], multimod_compile, ['T15149', '-v0'])
-
-test('ExplicitForAllRules1', normal, compile, ['-Wunused-foralls'])
