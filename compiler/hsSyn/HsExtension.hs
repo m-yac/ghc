@@ -1097,7 +1097,7 @@ type OutputableX p = -- See Note [OutputableX]
 
   , Outputable (XViaStrategy p)
   , Outputable (XViaStrategy GhcRn)
-  
+
   , Outputable (XHsRuleTyVarBndr p)
   , Outputable (XHsRuleTyVarBndr GhcRn)
 

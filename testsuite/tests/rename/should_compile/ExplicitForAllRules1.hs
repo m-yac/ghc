@@ -16,7 +16,7 @@ import Data.Kind
 "example"  forall a b. forall. map @a @b f = f
 "example2" forall a. forall (x :: a). id x = x
   #-}
-  
+
 {-# NOINLINE f #-}
 f :: a -> b
 f = undefined
@@ -42,4 +42,4 @@ h x = x
 {-# RULES "example6" forall a forall. g a forall = () #-}
 
 -- Should generate a warning
-{-# RULES "example7" forall a b. forall (x :: a). id x = x #-} 
+{-# RULES "example7" forall a b. forall (x :: a). id x = x #-}

@@ -84,7 +84,7 @@ tcRule (HsRule { rd_ext  = ext
               -- constraints, which we should not forget about.
               -- It may mention the skolem type variables bound by
               -- the RULE.  c.f. Trac #10072
-       
+
        ; (lhs', lhs_wanted, rhs', rhs_wanted, rule_ty)
             <- setTcLevel lvl $
                tcExtendTyVarEnv tv_bndrs $

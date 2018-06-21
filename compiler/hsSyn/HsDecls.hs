@@ -2076,7 +2076,7 @@ type LRuleDecl pass = Located (RuleDecl pass)
 -- | Rule Declaration
 data RuleDecl pass
   = HsRule -- Source rule
-       { rd_ext  :: XHsRule pass 
+       { rd_ext  :: XHsRule pass
            -- ^ After renamer, free-vars from the LHS and RHS
        , rd_name :: Located (SourceText,RuleName)
            -- ^ Note [Pragma source text] in BasicTypes

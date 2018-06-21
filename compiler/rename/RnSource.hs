@@ -709,7 +709,7 @@ rnFamInstEqn doc mb_cls rhs_kvars
              -- Use the "...Dups" form because it's needed
              -- below to report unsed binder on the LHS
        ; let pat_kity_vars = rmDupsInRdrTyVars pat_kity_vars_with_dups
-       
+
          -- all pat vars not explicitly bound (see extractHsTvBndrs)
        ; mb_imp_kity_vars <- traverse (\bs -> extractHsTvBndrs bs pat_kity_vars) mb_bndrs
        ; let imp_vars = case mb_imp_kity_vars of
@@ -718,7 +718,7 @@ rnFamInstEqn doc mb_cls rhs_kvars
                           -- all pattern vars are freed otherwise
                           Nothing             -> freeKiTyVarsAllVars pat_kity_vars
        ; imp_var_names <- mapM (newTyVarNameRn mb_cls . L loc . unLoc) imp_vars
-       
+
        ; let bndrs = fromMaybe [] mb_bndrs
              bnd_vars = map hsLTyVarLocName bndrs
              payload_kvars = filterOut (`elemRdr` (bnd_vars ++ imp_vars)) rhs_kvars
@@ -728,7 +728,7 @@ rnFamInstEqn doc mb_cls rhs_kvars
 
          -- all names not bound in an explict forall
        ; let all_imp_var_names = imp_var_names ++ payload_kvar_names
-       
+
              -- All the free vars of the family patterns
              -- with a sensible binding location
        ; ((bndrs', pats', payload'), fvs)
@@ -1058,11 +1058,11 @@ bindRuleTmVars doc tyvs vars names thing_inside
 
     go [] [] thing_inside = thing_inside []
     go vars names _ = pprPanic "bindRuleVars" (ppr vars $$ ppr names)
-    
+
     bind_free_tvs = case tyvs of Nothing -> AlwaysBind
                                  Just _  -> NeverBind
 
-bindRuleTyVars :: HsDocContext -> SDoc -> Maybe [XHsRuleTyVarBndr GhcPs] 
+bindRuleTyVars :: HsDocContext -> SDoc -> Maybe [XHsRuleTyVarBndr GhcPs]
                -> (Maybe [XHsRuleTyVarBndr GhcRn]  -> RnM (b, FreeVars))
                -> RnM (b, FreeVars)
 bindRuleTyVars doc in_doc (Just bndrs) thing_inside

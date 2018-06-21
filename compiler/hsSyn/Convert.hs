@@ -724,7 +724,7 @@ cvtPragmaD (RuleP nm ty_bndrs tm_bndrs lhs rhs phases)
                                  , rd_tmvs = tm_bndrs'
                                  , rd_lhs  = lhs'
                                  , rd_rhs  = rhs' }] }
-                
+
           }
 
 cvtPragmaD (AnnP target exp)

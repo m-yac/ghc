@@ -1686,7 +1686,7 @@ tcFamTyPats fam_tc mb_clsinfo
                                    -- aren't bound by a type pattern
        ; checkNoErrs $ reportFloatingKvs fam_name flav
                                          qtkvs unmentioned_imp_tvs
-                                
+
             -- Error if exp_tvs contains anything that is still unused.
             -- See Note [Unused explicitly bound variables in a family pattern]
        ; let unmentioned_exp_tvs = filterOut (`elemVarSet` all_mentioned_tvs) exp_tvs
@@ -1719,9 +1719,9 @@ Consider the following examples:
   type instance F a = Maybe b
   type instance forall b. F a = Bool
   type instance forall b. F a = Maybe b
-  
+
 In every case, b is a type variable not determined by the LHS pattern. The
-first is caught by the renamer, but we catch the last two here. Perhaps one 
+first is caught by the renamer, but we catch the last two here. Perhaps one
 could argue that the second should be accepted, albeit with a warning, but
 consider the fact that in a type family instance, there is no way to interact
 with such a varable. At least with @x :: forall a. Int@ we can use visibile
