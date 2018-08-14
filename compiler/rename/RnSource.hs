@@ -68,7 +68,7 @@ import Control.Arrow ( first )
 import Data.List ( mapAccumL )
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty ( NonEmpty(..) )
-import Data.Maybe ( maybe, fromMaybe )
+import Data.Maybe ( isNothing, maybe, fromMaybe )
 import qualified Data.Set as Set ( difference, fromList, toList, null )
 
 {- | @rnSourceDecl@ "renames" declarations.
@@ -700,10 +700,6 @@ rnFamInstEqn doc mb_cls rhs_kvars
                                , feqn_fixity = fixity
                                , feqn_rhs    = payload }}) rn_payload
   = do { tycon'   <- lookupFamInstName (fmap fst mb_cls) tycon
-       ; let loc = case pats of
-                     []             -> pprPanic "rnFamInstEqn" (ppr tycon)
-                     (L loc _ : []) -> loc
-                     (L loc _ : ps) -> combineSrcSpans loc (getLoc (last ps))
 
        ; pat_kity_vars_with_dups <- extractHsTysRdrTyVarsDups pats
              -- Use the "...Dups" form because it's needed
@@ -713,11 +709,11 @@ rnFamInstEqn doc mb_cls rhs_kvars
          -- all pat vars not explicitly bound (see extractHsTvBndrs)
        ; mb_imp_kity_vars <- traverse (\bs -> extractHsTvBndrs bs pat_kity_vars) mb_bndrs
        ; let imp_vars = case mb_imp_kity_vars of
-                          -- kind vars are the only ones freed if we have an explicit forall
+                          -- kind vars are the only ones free if we have an explicit forall
                           Just nbnd_kity_vars -> freeKiTyVarsKindVars nbnd_kity_vars
-                          -- all pattern vars are freed otherwise
+                          -- all pattern vars are free otherwise
                           Nothing             -> freeKiTyVarsAllVars pat_kity_vars
-       ; imp_var_names <- mapM (newTyVarNameRn mb_cls . L loc . unLoc) imp_vars
+       ; imp_var_names <- mapM (newTyVarNameRn mb_cls) imp_vars
 
        ; let bndrs = fromMaybe [] mb_bndrs
              bnd_vars = map hsLTyVarLocName bndrs
@@ -734,33 +730,29 @@ rnFamInstEqn doc mb_cls rhs_kvars
        ; ((bndrs', pats', payload'), fvs)
               <- bindLocalNamesFV all_imp_var_names $
                  bindLHsTyVarBndrs doc (Just $ inHsDocContext doc)
-                                   mb_cls bndrs (\bndrs' ->
+                                   mb_cls bndrs $ \bndrs' ->
                  do { (pats', pat_fvs) <- rnLHsTypes (FamPatCtx tycon) pats
                     ; (payload', rhs_fvs) <- rn_payload doc payload
 
-                      -- Only when there's no explicit forall...
-                    ; case mb_bndrs of
-                        Just _ -> return ()
-                        Nothing -> do {
-                           -- ...report unused binders on the LHS
-                           -- See Note [Unused type variables in family instances]
-                        ; let groups :: [NonEmpty (Located RdrName)]
-                              groups = equivClasses cmpLocated $
-                                       freeKiTyVarsAllVars pat_kity_vars_with_dups
-                        ; tv_nms_dups <- mapM (lookupOccRn . unLoc) $
-                                         [ tv | (tv :| (_:_)) <- groups ]
-                              -- Add to the used variables
-                              --  a) any variables that appear *more than once* on the LHS
-                              --     e.g.   F a Int a = Bool
-                              --  b) for associated instances, the variables
-                              --     of the instance decl.  See
-                              --     Note [Unused type variables in family instances]
-                        ; let tv_nms_used = extendNameSetList rhs_fvs $
-                                            inst_tvs ++ tv_nms_dups
-                              inst_tvs = case mb_cls of
-                                           Nothing            -> []
-                                           Just (_, inst_tvs) -> inst_tvs
-                        ; warnUnusedTypePatterns imp_var_names tv_nms_used }
+                       -- Report unused binders on the LHS
+                       -- See Note [Unused type variables in family instances]
+                    ; let groups :: [NonEmpty (Located RdrName)]
+                          groups = equivClasses cmpLocated $
+                                   freeKiTyVarsAllVars pat_kity_vars_with_dups
+                    ; tv_nms_dups <- mapM (lookupOccRn . unLoc) $
+                                     [ tv | (tv :| (_:_)) <- groups ]
+                          -- Add to the used variables
+                          --  a) any variables that appear *more than once* on the LHS
+                          --     e.g.   F a Int a = Bool
+                          --  b) for associated instances, the variables
+                          --     of the instance decl.  See
+                          --     Note [Unused type variables in family instances]
+                    ; let tv_nms_used = extendNameSetList rhs_fvs $
+                                        inst_tvs ++ tv_nms_dups
+                          inst_tvs = case mb_cls of
+                                       Nothing            -> []
+                                       Just (_, inst_tvs) -> inst_tvs
+                    ; warnUnusedTypePatterns all_imp_var_names tv_nms_used
 
                          -- See Note [Renaming associated types]
                     ; let bad_tvs = maybe [] (filter is_bad . snd) mb_cls
@@ -770,7 +762,7 @@ rnFamInstEqn doc mb_cls rhs_kvars
                                            && not (cls_tkv `elemNameSet` var_name_set)
                     ; unless (null bad_tvs) (badAssocRhs bad_tvs)
 
-                    ; return ((bndrs', pats', payload'), rhs_fvs `plusFV` pat_fvs) })
+                    ; return ((bndrs', pats', payload'), rhs_fvs `plusFV` pat_fvs) }
 
        ; let anon_wcs = concatMap collectAnonWildCards pats'
              all_ibs  = anon_wcs ++ all_imp_var_names
@@ -815,7 +807,7 @@ rnTyFamDefltEqn :: Name
                 -> TyFamDefltEqn GhcPs
                 -> RnM (TyFamDefltEqn GhcRn, FreeVars)
 rnTyFamDefltEqn cls (FamEqn { feqn_tycon  = tycon
-                            , feqn_bndrs  = _ -- should be nothing
+                            , feqn_bndrs  = bndrs
                             , feqn_pats   = tyvars
                             , feqn_fixity = fixity
                             , feqn_rhs    = rhs })
@@ -825,7 +817,8 @@ rnTyFamDefltEqn cls (FamEqn { feqn_tycon  = tycon
        ; (rhs', fvs) <- rnLHsType ctx rhs
        ; return (FamEqn { feqn_ext    = noExt
                         , feqn_tycon  = tycon'
-                        , feqn_bndrs  = Nothing
+                        , feqn_bndrs  = ASSERT( isNothing bndrs )
+                                        Nothing
                         , feqn_pats   = tyvars'
                         , feqn_fixity = fixity
                         , feqn_rhs    = rhs' }, fvs) } }
@@ -1039,7 +1032,7 @@ rnHsRuleDecl (HsRule { rd_name = rule_name
     in_rule = text "in the rule" <+> pprFullRuleName rule_name
 rnHsRuleDecl (XRuleDecl _) = panic "rnHsRuleDecl"
 
-bindRuleTmVars :: HsDocContext -> Maybe [XHsRuleTyVarBndr GhcRn]
+bindRuleTmVars :: HsDocContext -> Maybe ty_bndrs
                -> [LRuleBndr GhcPs] -> [Name]
                -> ([LRuleBndr GhcRn] -> RnM (a, FreeVars))
                -> RnM (a, FreeVars)
@@ -1062,8 +1055,8 @@ bindRuleTmVars doc tyvs vars names thing_inside
     bind_free_tvs = case tyvs of Nothing -> AlwaysBind
                                  Just _  -> NeverBind
 
-bindRuleTyVars :: HsDocContext -> SDoc -> Maybe [XHsRuleTyVarBndr GhcPs]
-               -> (Maybe [XHsRuleTyVarBndr GhcRn]  -> RnM (b, FreeVars))
+bindRuleTyVars :: HsDocContext -> SDoc -> Maybe [LHsRuleTyVarBndr GhcPs]
+               -> (Maybe [LHsRuleTyVarBndr GhcRn]  -> RnM (b, FreeVars))
                -> RnM (b, FreeVars)
 bindRuleTyVars doc in_doc (Just bndrs) thing_inside
   = bindLHsTyVarBndrs doc (Just in_doc) Nothing bndrs (thing_inside . Just)

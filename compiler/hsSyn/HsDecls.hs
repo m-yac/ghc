@@ -1462,9 +1462,12 @@ type HsTyPats pass = [LHsType pass]
 {- Note [Family instance declaration binders]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 For ordinary data/type family instances, the feqn_pats field of FamEqn stores
-the LHS type (and kind) patterns. These type patterns can of course contain
-type (and kind) variables, which are bound in the hsib_vars field of the
-HsImplicitBndrs in FamInstEqn. Note in particular
+the LHS type (and kind) patterns. Any type (and kind) variables contained
+in these type patterns are bound in the hsib_vars field of the HsImplicitBndrs
+in FamInstEqn depending on whether or not an explicit forall is present. In
+the case of an explicit forall, the hsib_vars only includes kind variables not
+bound in the forall. Otherwise, all type (and kind) variables are bound in
+the hsib_vars. In the latter case, note that in particular
 
 * The hsib_vars *includes* any anonymous wildcards.  For example
      type instance F a _ = a
@@ -1645,7 +1648,6 @@ ppr_fam_inst_eqn (XHsImplicitBndrs x) = ppr x
 ppr_fam_deflt_eqn :: (OutputableBndrId (GhcPass p))
                   => LTyFamDefltEqn (GhcPass p) -> SDoc
 ppr_fam_deflt_eqn (L _ (FamEqn { feqn_tycon  = tycon
-                               , feqn_bndrs  = _
                                , feqn_pats   = tvs
                                , feqn_fixity = fixity
                                , feqn_rhs    = rhs }))
@@ -2081,8 +2083,11 @@ data RuleDecl pass
        , rd_name :: Located (SourceText,RuleName)
            -- ^ Note [Pragma source text] in BasicTypes
        , rd_act  :: Activation
-       , rd_tyvs :: Maybe [XHsRuleTyVarBndr pass] -- ^ Forall'd type vars
-       , rd_tmvs :: [LRuleBndr pass]              -- ^ Forall'd term vars
+       , rd_tyvs :: Maybe [LHsRuleTyVarBndr pass]
+           -- ^ Forall'd type vars
+       , rd_tmvs :: [LRuleBndr pass]
+           -- ^ Forall'd term vars, before typechecking; after typechecking
+           --    this includes all forall'd vars
        , rd_lhs  :: Located (HsExpr pass)
        , rd_rhs  :: Located (HsExpr pass)
        }
@@ -2102,9 +2107,9 @@ type instance XHsRule       GhcPs = NoExt
 type instance XHsRule       GhcRn = HsRuleRn
 type instance XHsRule       GhcTc = HsRuleRn
 
-type instance XHsRuleTyVarBndr GhcPs = LHsTyVarBndr GhcPs
-type instance XHsRuleTyVarBndr GhcRn = LHsTyVarBndr GhcRn
-type instance XHsRuleTyVarBndr GhcTc = LHsTyVarBndr GhcRn
+type instance LHsRuleTyVarBndr GhcPs = LHsTyVarBndr GhcPs
+type instance LHsRuleTyVarBndr GhcRn = LHsTyVarBndr GhcRn
+type instance LHsRuleTyVarBndr GhcTc = LHsTyVarBndr GhcRn
 
 type instance XXRuleDecl    (GhcPass _) = NoExt
 
@@ -2150,13 +2155,14 @@ instance (p ~ GhcPass pass, OutputableBndrId p) => Outputable (RuleDecl p) where
               , rd_lhs  = lhs
               , rd_rhs  = rhs })
         = sep [pprFullRuleName name <+> ppr act,
-               nest 4 (pp_forall_ty tys <+> pp_forall_tm <+> pprExpr (unLoc lhs)),
+               nest 4 (pp_forall_ty tys <+> pp_forall_tm tys
+                                        <+> pprExpr (unLoc lhs)),
                nest 6 (equals <+> pprExpr (unLoc rhs)) ]
         where
           pp_forall_ty Nothing     = empty
           pp_forall_ty (Just qtvs) = forAllLit <+> fsep (map ppr qtvs) <> dot
-          pp_forall_tm | null tms  = empty
-                       | otherwise = forAllLit <+> fsep (map ppr tms) <> dot
+          pp_forall_tm Nothing | null tms = empty
+          pp_forall_tm _ = forAllLit <+> fsep (map ppr tms) <> dot
   ppr (XRuleDecl x) = ppr x
 
 instance (p ~ GhcPass pass, OutputableBndrId p) => Outputable (RuleBndr p) where

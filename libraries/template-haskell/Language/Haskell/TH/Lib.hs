@@ -198,7 +198,6 @@ pragRuleD n bndrs lhs rhs phases
       rhs1   <- rhs
       return $ PragmaD $ RuleP n Nothing bndrs1 lhs1 rhs1 phases
 
--- QYAC replace this w/ the newer old version I overwrote in Internal.hs?
 dataInstD :: CxtQ -> Name -> [TypeQ] -> Maybe Kind -> [ConQ] -> [DerivClauseQ]
           -> DecQ
 dataInstD ctxt tc tys ksig cons derivs =
@@ -209,7 +208,6 @@ dataInstD ctxt tc tys ksig cons derivs =
     derivs1 <- sequence derivs
     return (DataInstD ctxt1 tc Nothing tys1 ksig cons1 derivs1)
 
--- QYAC replace this w/ the newer old version I overwrote in Internal.hs?
 newtypeInstD :: CxtQ -> Name -> [TypeQ] -> Maybe Kind -> ConQ -> [DerivClauseQ]
              -> DecQ
 newtypeInstD ctxt tc tys ksig con derivs =

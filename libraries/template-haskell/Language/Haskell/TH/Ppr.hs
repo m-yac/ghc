@@ -536,16 +536,17 @@ instance Ppr Pragma where
        = text "{-# SPECIALISE instance" <+> ppr inst <+> text "#-}"
     ppr (RuleP n ty_bndrs tm_bndrs lhs rhs phases)
        = sep [ text "{-# RULES" <+> pprString n <+> ppr phases
-             , nest 4 $ ppr_ty_forall ty_bndrs <+> ppr_tm_forall <+> ppr lhs
+             , nest 4 $ ppr_ty_forall ty_bndrs <+> ppr_tm_forall ty_bndrs
+                                               <+> ppr lhs
              , nest 4 $ char '=' <+> ppr rhs <+> text "#-}" ]
       where ppr_ty_forall Nothing      = empty
             ppr_ty_forall (Just bndrs) = text "forall"
                                          <+> fsep (map ppr bndrs)
                                          <+> char '.'
-            ppr_tm_forall | null tm_bndrs = empty
-                          | otherwise     = text "forall"
-                                            <+> fsep (map ppr tm_bndrs)
-                                            <+> char '.'
+            ppr_tm_forall Nothing | null tm_bndrs = empty
+            ppr_tm_forall _ = text "forall"
+                              <+> fsep (map ppr tm_bndrs)
+                              <+> char '.'
     ppr (AnnP tgt expr)
        = text "{-# ANN" <+> target1 tgt <+> ppr expr <+> text "#-}"
       where target1 ModuleAnnotation    = text "module"

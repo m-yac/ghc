@@ -1322,7 +1322,8 @@ tcDefaultAssocDecl fam_tc [L loc (FamEqn { feqn_tycon = L _ tc_name
           -- type default LHS can mention *different* type variables than the
           -- enclosing class. So it's treated more as a freestanding beast.
        ; (pats', rhs_ty)
-           <- tcFamTyPats fam_tc Nothing all_vars mb_expl_bndrs pats
+           <- ASSERT( isNothing mb_expl_bndrs )
+              tcFamTyPats fam_tc Nothing all_vars Nothing pats
               (kcTyFamEqnRhs Nothing rhs) $
               \tvs pats rhs_kind ->
               do { rhs_ty <- solveEqualities $

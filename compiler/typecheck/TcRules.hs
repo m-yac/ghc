@@ -51,6 +51,12 @@ an example (test simplCore/should_compile/rule2.hs) produced by Roman:
    {-# RULES "foo/bar" foo = bar #-}
 
 He wanted the rule to typecheck.
+
+Note [TcLevel in type checking rules]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Bringing type variables into scope naturally bumps the TcLevel. Thus, we type
+check the term-level binders in a bumped level, and we must accordingly bump
+the level whenever these binders are in scope.
 -}
 
 tcRules :: [LRuleDecls GhcRn] -> TcM [LRuleDecls GhcTcId]
@@ -76,8 +82,8 @@ tcRule (HsRule { rd_ext  = ext
   = addErrCtxt (ruleCtxt $ snd $ unLoc name)  $
     do { traceTc "---- Rule ------" (pprFullRuleName name)
 
-        -- Note [Typechecking rules]
-        -- TODORAE add comment about 'lvl'
+        -- See Note [Typechecking rules]
+        -- and Note [TcLevel in type checking rules]
        ; ((tv_bndrs, id_bndrs, lvl), bndr_wanted) <- captureConstraints $
                                                      tcRuleBndrs ty_bndrs tm_bndrs
               -- bndr_wanted constraints can include wildcard hole
@@ -151,36 +157,43 @@ tcRule (HsRule { rd_ext  = ext
                          , rd_rhs  = mkHsDictLet rhs_binds rhs' } }
 tcRule (XRuleDecl _) = panic "tcRule"
 
-tcRuleBndrs :: Maybe [XHsRuleTyVarBndr GhcRn] -> [LRuleBndr GhcRn]
+-- See Note [TcLevel in type checking rules]
+tcRuleBndrs :: Maybe [LHsRuleTyVarBndr GhcRn] -> [LRuleBndr GhcRn]
             -> TcM ([TcTyVar],[Id],TcLevel)
 tcRuleBndrs (Just bndrs) xs
   = do { (tys1,(tys2,tms,lvl)) <- tcExplicitTKBndrs
                                   (ForAllSkol (pprHsExplicitForAll (Just bndrs)))
-                                  bndrs (tcRuleTmBndrs xs)
+                                  bndrs $ do { lvl <- getTcLevel
+                                             ; (tys,tms) <- tcRuleTmBndrs xs
+                                             ; return (tys,tms,lvl) }
        ; return (tys1 ++ tys2, tms, lvl) }
-tcRuleBndrs Nothing xs = tcRuleTmBndrs xs
-
-tcRuleTmBndrs :: [LRuleBndr GhcRn] -> TcM ([TcTyVar],[Id],TcLevel)
-tcRuleTmBndrs []
+tcRuleBndrs Nothing xs
   = do { lvl <- getTcLevel
-       ; return ([],[],lvl) }
+       ; (tys,tms) <- tcRuleTmBndrs xs
+       ; return (tys,tms,lvl) }
+
+-- See Note [TcLevel in type checking rules]
+tcRuleTmBndrs :: [LRuleBndr GhcRn] -> TcM ([TcTyVar],[Id])
+tcRuleTmBndrs [] = return ([],[])
 tcRuleTmBndrs (L _ (RuleBndr _ (L _ name)) : rule_bndrs)
   = do  { ty <- newOpenFlexiTyVarTy
-        ; (tyvars, tmvars, lvl) <- tcRuleTmBndrs rule_bndrs
-        ; return (tyvars, mkLocalId name ty : tmvars, lvl) }
+        ; (tyvars, tmvars) <- tcRuleTmBndrs rule_bndrs
+        ; return (tyvars, mkLocalId name ty : tmvars) }
 tcRuleTmBndrs (L _ (RuleBndrSig _ (L _ name) rn_ty) : rule_bndrs)
 --  e.g         x :: a->a
 --  The tyvar 'a' is brought into scope first, just as if you'd written
 --              a::*, x :: a->a
+--  If there's an explicit forall, the renamer would have already reported an
+--   error for each out-of-scope type variable used
   = do  { let ctxt = RuleSigCtxt name
         ; (_ , tvs, id_ty) <- tcHsPatSigType ctxt rn_ty
         ; let id  = mkLocalIdOrCoVar name id_ty
                     -- See Note [Pattern signature binders] in TcHsType
 
               -- The type variables scope over subsequent bindings; yuk
-        ; (tyvars, tmvars, lvl) <- tcExtendNameTyVarEnv tvs $
+        ; (tyvars, tmvars) <- tcExtendNameTyVarEnv tvs $
                                    tcRuleTmBndrs rule_bndrs
-        ; return (map snd tvs ++ tyvars, id : tmvars, lvl) }
+        ; return (map snd tvs ++ tyvars, id : tmvars) }
 tcRuleTmBndrs (L _ (XRuleBndr _) : _) = panic "tcRuleTmBndrs"
 
 ruleCtxt :: FastString -> SDoc

@@ -174,12 +174,13 @@ mkATDefault :: LTyFamInstDecl GhcPs
 -- We use the Either monad because this also called
 -- from Convert.hs
 mkATDefault (L loc (TyFamInstDecl { tfid_eqn = HsIB { hsib_body = e }}))
-      | FamEqn { feqn_tycon = tc, feqn_bndrs = _, feqn_pats = pats
+      | FamEqn { feqn_tycon = tc, feqn_bndrs = bndrs, feqn_pats = pats
                , feqn_fixity = fixity, feqn_rhs = rhs } <- e
       = do { tvs <- checkTyVars (text "default") equalsDots tc pats
            ; return (L loc (FamEqn { feqn_ext    = noExt
                                    , feqn_tycon  = tc
-                                   , feqn_bndrs  = Nothing -- should be nothing
+                                   , feqn_bndrs  = ASSERT( isNothing bndrs )
+                                                   Nothing
                                    , feqn_pats   = tvs
                                    , feqn_fixity = fixity
                                    , feqn_rhs    = rhs })) }

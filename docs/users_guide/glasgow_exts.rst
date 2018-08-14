@@ -7510,10 +7510,9 @@ the left hand side can be explicitly bound. For example: ::
   
     data instance forall a (b :: Proxy a). F (Proxy b) = FProxy Bool
 
-When an explicit ``forall`` is present, all type variables mentioned must
-either be in scope (e.g. ``Proxy``, ``Bool``), or bound by the ``forall``
-(e.g. ``a``, ``b``). However, kind variables *will* be implicitly bound When
-possible, for example: ::
+When an explicit ``forall`` is present, all *type* variables mentioned must
+be bound by the ``forall``. Kind variables will be implicitly bound if
+necessary, for example: ::
   
     data instance forall (a :: k). F a = FOtherwise
 
@@ -7724,7 +7723,13 @@ their code, GHC will not be able to simplify the type. After all, ``a``
 might later be instantiated with ``Int``.
 
 A closed type family's equations have the same restrictions and extensions as
-the equations for open type family instances.
+the equations for open type family instances. For instance, when
+:extension:`ExplicitForAll` is enabled, type or kind variables used on the
+left hand side of an equation can be explicitly bound, such as in: ::
+
+  type family R a where
+    forall t a. R (t a) = [a]
+    forall a.   R a     = a
 
 A closed type family may be declared with no equations. Such closed type
 families are opaque type-level definitions that will never reduce, are
@@ -8031,7 +8036,11 @@ Note the following points:
 -  When :extension:`ExplicitForAll` is enabled, type and kind variables can be
    explicily bound in associated data or type family instances in the same way
    (and with the same restrictions) as :ref:`data-instance-declarations` or
-   :ref:`type-instance-declarations`.
+   :ref:`type-instance-declarations`. For example, adapting the above, the
+   following is accepted: ::
+     
+     instance Eq (Elem [e]) => Collects [e] where
+       type forall e. Elem [e] = e
 
 .. _assoc-decl-defs:
 

@@ -1385,9 +1385,7 @@ reifyAxBranch fam_tc (CoAxBranch { cab_tvs = tvs
                                  , cab_lhs = lhs
                                  , cab_rhs = rhs })
             -- remove kind patterns (#8884)
-  = do { tvs' <- case tvs of
-                   [] -> pure Nothing
-                   _  -> Just <$> reifyTyVars tvs
+  = do { tvs' <- reifyTyVarsToMaybe tvs
        ; let lhs_types_only = filterOutInvisibleTypes fam_tc lhs
        ; lhs' <- reifyTypes lhs_types_only
        ; annot_th_lhs <- zipWith3M annotThType (mkIsPolyTvs fam_tvs)
@@ -1686,9 +1684,7 @@ reifyFamilyInstance is_poly_tvs inst@(FamInst { fi_flavor = flavor
   = case flavor of
       SynFamilyInst ->
                -- remove kind patterns (#8884)
-        do { th_tvs <- case fam_tvs of
-                         [] -> pure Nothing
-                         _  -> Just <$> reifyTyVars fam_tvs
+        do { th_tvs <- reifyTyVarsToMaybe fam_tvs
            ; let lhs_types_only = filterOutInvisibleTypes fam_tc lhs
            ; th_lhs <- reifyTypes lhs_types_only
            ; annot_th_lhs <- zipWith3M annotThType is_poly_tvs lhs_types_only
@@ -1712,9 +1708,7 @@ reifyFamilyInstance is_poly_tvs inst@(FamInst { fi_flavor = flavor
                  eta_expanded_lhs = lhs `chkAppend` etad_tys
                  dataCons         = tyConDataCons rep_tc
                  isGadt           = isGadtSyntaxTyCon rep_tc
-           ; th_tvs <- case fam_tvs of
-                            [] -> pure Nothing
-                            _  -> Just <$> reifyTyVars fam_tvs
+           ; th_tvs <- reifyTyVarsToMaybe fam_tvs
            ; cons <- mapM (reifyDataCon isGadt eta_expanded_tvs) dataCons
            ; let types_only = filterOutInvisibleTypes fam_tc eta_expanded_lhs
            ; th_tys <- reifyTypes types_only
@@ -1793,6 +1787,10 @@ reifyTyVars tvs = mapM reify_tv tvs
       where
         kind = tyVarKind tv
         name = reifyName tv
+
+reifyTyVarsToMaybe :: [TyVar] -> TcM (Maybe [TH.TyVarBndr])
+reifyTyVarsToMaybe []  = pure Nothing
+reifyTyVarsToMaybe tys = Just <$> reifyTyVars tys
 
 {-
 Note [Kind annotations on TyConApps]

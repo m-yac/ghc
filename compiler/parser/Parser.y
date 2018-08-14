@@ -361,7 +361,7 @@ or a valid variable named 'forall', for example a function @:: Int -> Int@
 
 '{-# RULES "name" forall a. forall 0 = 0 #-}'
 
-Shift means the parser only allows the former.
+Shift means the parser only allows the former. Also see conflict 753 above.
 
 -------------------------------------------------------------------------------
 
@@ -1673,7 +1673,8 @@ rule_explicit_activation :: { ([AddAnn]
                                   ,NeverActive) }
 
 rule_foralls :: { ([AddAnn], Maybe [LHsTyVarBndr GhcPs], [LRuleBndr GhcPs]) }
-        : 'forall' rule_vars '.' 'forall' rule_vars '.'    {% hintExplicitForall (getLoc $1)
+        : 'forall' rule_vars '.' 'forall' rule_vars '.'    {% let tyvs = mkRuleTyVarBndrs $2
+                                                              in hintExplicitForall (getLoc $1)
                                                               >> checkRuleTyVarBndrNames (mkRuleTyVarBndrs $2)
                                                               >> return ([mu AnnForall $1,mj AnnDot $3,
                                                                           mu AnnForall $4,mj AnnDot $6],

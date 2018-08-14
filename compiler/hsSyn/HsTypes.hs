@@ -1367,7 +1367,7 @@ ppr_mono_lty ty = ppr_mono_ty (unLoc ty)
 
 ppr_mono_ty :: (OutputableBndrId (GhcPass p)) => HsType (GhcPass p) -> SDoc
 ppr_mono_ty (HsForAllTy { hst_bndrs = tvs, hst_body = ty })
-  = sep [pprHsExplicitForAll (Just tvs), ppr_mono_lty ty]
+  = sep [pprHsForAll tvs (noLoc []), ppr_mono_lty ty]
 
 ppr_mono_ty (HsQualTy { hst_ctxt = L _ ctxt, hst_body = ty })
   = sep [pprHsContextAlways ctxt, ppr_mono_lty ty]
