@@ -739,7 +739,7 @@ rnFamInstEqn doc mb_cls rhs_kvars
                     ; let groups :: [NonEmpty (Located RdrName)]
                           groups = equivClasses cmpLocated $
                                    freeKiTyVarsAllVars pat_kity_vars_with_dups
-                    ; tv_nms_dups <- mapM (lookupOccRn . unLoc) $
+                    ; nms_dups <- mapM (lookupOccRn . unLoc) $
                                      [ tv | (tv :| (_:_)) <- groups ]
                           -- Add to the used variables
                           --  a) any variables that appear *more than once* on the LHS
@@ -747,12 +747,14 @@ rnFamInstEqn doc mb_cls rhs_kvars
                           --  b) for associated instances, the variables
                           --     of the instance decl.  See
                           --     Note [Unused type variables in family instances]
-                    ; let tv_nms_used = extendNameSetList rhs_fvs $
-                                        inst_tvs ++ tv_nms_dups
+                    ; let nms_used = extendNameSetList rhs_fvs $
+                                        inst_tvs ++ nms_dups
                           inst_tvs = case mb_cls of
                                        Nothing            -> []
                                        Just (_, inst_tvs) -> inst_tvs
-                    ; warnUnusedTypePatterns all_imp_var_names tv_nms_used
+                          all_nms = all_imp_var_names
+                                      ++ map hsLTyVarName bndrs'
+                    ; warnUnusedTypePatterns all_nms nms_used
 
                          -- See Note [Renaming associated types]
                     ; let bad_tvs = maybe [] (filter is_bad . snd) mb_cls
