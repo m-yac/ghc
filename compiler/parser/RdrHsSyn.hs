@@ -1054,8 +1054,8 @@ checkAPat msg loc e0 = do
    -- view pattern is well-formed if the pattern is
    EViewPat _ expr patE -> checkLPat msg patE >>=
                             (return . (\p -> ViewPat noExt expr p))
-   ExprWithTySig t e   -> do e <- checkLPat msg e
-                             return (SigPat t e)
+   ExprWithTySig _ e t  -> do e <- checkLPat msg e
+                              return (SigPat noExt e t)
 
    -- n+k patterns
    OpApp _ (L nloc (HsVar _ (L _ n))) (L _ (HsVar _ (L _ plus)))
@@ -1130,7 +1130,7 @@ checkValDef :: SDoc
 checkValDef msg _strictness lhs (Just sig) grhss
         -- x :: ty = rhs  parses as a *pattern* binding
   = checkPatBind msg (L (combineLocs lhs sig)
-                        (ExprWithTySig (mkLHsSigWcType sig) lhs)) grhss
+                        (ExprWithTySig noExt lhs (mkLHsSigWcType sig))) grhss
 
 checkValDef msg strictness lhs Nothing g@(L l (_,grhss))
   = do  { mb_fun <- isFunLhs lhs

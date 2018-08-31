@@ -1704,13 +1704,12 @@ gen_Newtype_binds loc cls inst_tvs inst_tys rhs_ty
         pp_lhs      = ppr (mkTyConApp fam_tc rep_lhs_tys)
 
 nlHsAppType :: LHsExpr GhcPs -> Type -> LHsExpr GhcPs
-nlHsAppType e s = noLoc (HsAppType hs_ty e)
+nlHsAppType e s = noLoc (HsAppType noExt e hs_ty)
   where
     hs_ty = mkHsWildCardBndrs $ nlHsParTy (typeToLHsType s)
 
 nlExprWithTySig :: LHsExpr GhcPs -> Type -> LHsExpr GhcPs
-nlExprWithTySig e s = noLoc $ ExprWithTySig hs_ty
-                            $ parenthesizeHsExpr sigPrec e
+nlExprWithTySig e s = noLoc $ ExprWithTySig noExt (parenthesizeHsExpr sigPrec e) hs_ty
   where
     hs_ty = mkLHsSigWcType (typeToLHsType s)
 

@@ -1246,9 +1246,9 @@ repE (HsLamCase _ (MG { mg_alts = L _ ms }))
                         ; core_ms <- coreList matchQTyConName ms'
                         ; repLamCase core_ms }
 repE (HsApp _ x y)   = do {a <- repLE x; b <- repLE y; repApp a b}
-repE (HsAppType t e) = do { a <- repLE e
-                          ; s <- repLTy (hswc_body t)
-                          ; repAppType a s }
+repE (HsAppType _ e t) = do { a <- repLE e
+                            ; s <- repLTy (hswc_body t)
+                            ; repAppType a s }
 
 repE (OpApp _ e1 op e2) =
   do { arg1 <- repLE e1;
@@ -1316,7 +1316,7 @@ repE (RecordUpd { rupd_expr = e, rupd_flds = flds })
         fs <- repUpdFields flds;
         repRecUpd x fs }
 
-repE (ExprWithTySig ty e)
+repE (ExprWithTySig _ e ty)
   = do { e1 <- repLE e
        ; t1 <- repHsSigWcType ty
        ; repSigExp e1 t1 }
@@ -1752,9 +1752,9 @@ repP (ConPatIn dc details)
 repP (NPat _ (L _ l) Nothing _) = do { a <- repOverloadedLiteral l; repPlit a }
 repP (ViewPat _ e p) = do { e' <- repLE e; p' <- repLP p; repPview e' p' }
 repP p@(NPat _ _ (Just _) _) = notHandled "Negative overloaded patterns" (ppr p)
-repP (SigPat t p) = do { p' <- repLP p
-                       ; t' <- repLTy (hsSigWcType t)
-                       ; repPsig p' t' }
+repP (SigPat _ p t) = do { p' <- repLP p
+                         ; t' <- repLTy (hsSigWcType t)
+                         ; repPsig p' t' }
 repP (SplicePat _ splice) = repSplice splice
 
 repP other = notHandled "Exotic pattern" (ppr other)

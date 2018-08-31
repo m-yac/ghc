@@ -27,6 +27,8 @@ import Var
 import Outputable
 import SrcLoc (Located)
 
+import Data.Kind
+
 {-
 Note [Trees that grow]
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -84,6 +86,18 @@ type instance IdP GhcRn = Name
 type instance IdP GhcTc = Id
 
 type LIdP p = Located (IdP p)
+
+-- | Marks that a field uses the GhcRn variant even when the pass
+-- parameter is GhcTc. Useful for storing HsTypes in HsExprs, say, because
+-- HsType GhcTc should never occur.
+type family NoGhcTc (p :: Type) where
+    -- this way, GHC can figure out that the result is a GhcPass
+  NoGhcTc (GhcPass pass) = GhcPass (NoGhcTcPass pass)
+  NoGhcTc other          = other
+
+type family NoGhcTcPass (p :: Pass) :: Pass where
+  NoGhcTcPass 'Typechecked = 'Renamed
+  NoGhcTcPass other        = other
 
 -- =====================================================================
 -- Type families for the HsBinds extension points
@@ -1083,17 +1097,7 @@ type ConvertIdX a b =
 -- | Provide a summary constraint that gives all am Outputable constraint to
 -- extension points needing one
 type OutputableX p = -- See Note [OutputableX]
-  (
-    Outputable (XSigPat p)
-  , Outputable (XSigPat GhcRn)
-
-  , Outputable (XIPBinds    p)
-
-  , Outputable (XExprWithTySig p)
-  , Outputable (XExprWithTySig GhcRn)
-
-  , Outputable (XAppTypeE p)
-  , Outputable (XAppTypeE GhcRn)
+  ( Outputable (XIPBinds    p)
 
   , Outputable (XViaStrategy p)
   , Outputable (XViaStrategy GhcRn)
@@ -1111,5 +1115,9 @@ type OutputableX p = -- See Note [OutputableX]
 type OutputableBndrId id =
   ( OutputableBndr (NameOrRdrName (IdP id))
   , OutputableBndr (IdP id)
+  , OutputableBndr (NameOrRdrName (IdP (NoGhcTc id)))
+  , OutputableBndr (IdP (NoGhcTc id))
+  , NoGhcTc id ~ NoGhcTc (NoGhcTc id)
   , OutputableX id
+  , OutputableX (NoGhcTc id)
   )

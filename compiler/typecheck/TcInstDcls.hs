@@ -1660,8 +1660,8 @@ mkDefMethBind clas inst_tys sel_id dm_name
        ; return (bind, inline_prags) }
   where
     mk_vta :: LHsExpr GhcRn -> Type -> LHsExpr GhcRn
-    mk_vta fun ty = noLoc (HsAppType (mkEmptyWildCardBndrs $ nlHsParTy
-                                      $ noLoc $ XHsType $ NHsCoreTy ty) fun)
+    mk_vta fun ty = noLoc (HsAppType noExt fun (mkEmptyWildCardBndrs $ nlHsParTy
+                                                $ noLoc $ XHsType $ NHsCoreTy ty))
        -- NB: use visible type application
        -- See Note [Default methods in instances]
 
