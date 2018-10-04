@@ -1453,8 +1453,8 @@ of ``-W(no-)*``.
         do { mapM_ popInt xs ; return 10 }
 
 .. ghc-flag:: -Wunused-type-patterns
-    :shortdesc: warn about unused type variables which arise from patterns
-        in type family and data family instances
+    :shortdesc: warn about unused implicitly bound type variables which
+        arise from patterns in type family and data family instances
     :type: dynamic
     :reverse: -Wno-unused-type-patterns
     :category:
@@ -1463,8 +1463,8 @@ of ``-W(no-)*``.
        single: unused type patterns, warning
        single: type patterns, unused
 
-    Report all unused type variables which arise from patterns in type family
-    and data family instances. For instance: ::
+    Report all unused implicitly bound type variables which arise from
+    patterns in type family and data family instances. For instance: ::
 
         type instance F x y = []
 
@@ -1478,7 +1478,7 @@ of ``-W(no-)*``.
     unlike term-level pattern names, type names are often chosen expressly for
     documentation purposes, so using underscores in type names can make the
     documentation harder to read.
-
+    
 .. ghc-flag:: -Wunused-foralls
     :shortdesc: warn about type variables in user-written
         ``forall``\\s that are unused

@@ -95,7 +95,7 @@ test('GivenCheckDecomp', normal, compile, [''])
 test('GivenCheckTop', normal, compile, [''])
 
 test('ExplicitForAllFams1', normal, compile, [''])
-test('ExplicitForAllFams2', normal, compile, [''])
+test('ExplicitForAllFams2', normal, compile, ['-Wunused-foralls -Wunused-type-patterns'])
 
 # A very delicate test
 test('Gentle', normal, compile, [''])

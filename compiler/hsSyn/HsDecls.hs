@@ -2083,7 +2083,7 @@ data RuleDecl pass
        , rd_name :: Located (SourceText,RuleName)
            -- ^ Note [Pragma source text] in BasicTypes
        , rd_act  :: Activation
-       , rd_tyvs :: Maybe [LHsRuleTyVarBndr pass]
+       , rd_tyvs :: Maybe [LHsTyVarBndr (NoGhcTc pass)]
            -- ^ Forall'd type vars
        , rd_tmvs :: [LRuleBndr pass]
            -- ^ Forall'd term vars, before typechecking; after typechecking
@@ -2106,10 +2106,6 @@ data HsRuleRn = HsRuleRn NameSet NameSet -- Free-vars from the LHS and RHS
 type instance XHsRule       GhcPs = NoExt
 type instance XHsRule       GhcRn = HsRuleRn
 type instance XHsRule       GhcTc = HsRuleRn
-
-type instance LHsRuleTyVarBndr GhcPs = LHsTyVarBndr GhcPs
-type instance LHsRuleTyVarBndr GhcRn = LHsTyVarBndr GhcRn
-type instance LHsRuleTyVarBndr GhcTc = LHsTyVarBndr GhcRn
 
 type instance XXRuleDecl    (GhcPass _) = NoExt
 

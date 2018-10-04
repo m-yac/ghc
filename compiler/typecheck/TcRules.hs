@@ -158,7 +158,7 @@ tcRule (HsRule { rd_ext  = ext
 tcRule (XRuleDecl _) = panic "tcRule"
 
 -- See Note [TcLevel in type checking rules]
-tcRuleBndrs :: Maybe [LHsRuleTyVarBndr GhcRn] -> [LRuleBndr GhcRn]
+tcRuleBndrs :: Maybe [LHsTyVarBndr GhcRn] -> [LRuleBndr GhcRn]
             -> TcM ([TcTyVar],[Id],TcLevel)
 tcRuleBndrs (Just bndrs) xs
   = do { (tys1,(tys2,tms,lvl)) <- tcExplicitTKBndrs

@@ -439,12 +439,10 @@ type ForallXRuleDecls (c :: * -> Constraint) (x :: *) =
 -- RuleDecl type families
 type family XHsRule          x
 type family XXRuleDecl       x
-type family LHsRuleTyVarBndr x
 
 type ForallXRuleDecl (c :: * -> Constraint) (x :: *) =
        ( c (XHsRule           x)
        , c (XXRuleDecl        x)
-       , c (LHsRuleTyVarBndr  x)
        )
 
 -- -------------------------------------
@@ -1098,13 +1096,8 @@ type ConvertIdX a b =
 -- extension points needing one
 type OutputableX p = -- See Note [OutputableX]
   ( Outputable (XIPBinds    p)
-
   , Outputable (XViaStrategy p)
   , Outputable (XViaStrategy GhcRn)
-
-  , Outputable (LHsRuleTyVarBndr p)
-  , Outputable (LHsRuleTyVarBndr GhcRn)
-
   )
 -- TODO: Should OutputableX be included in OutputableBndrId?
 

@@ -1,0 +1,12 @@
+
+ExplicitForAllFams2.hs:32:10: warning: [-Wunused-foralls (in -Wextra)]
+    Quantified type variable ‘t’ not used on the right hand side
+
+ExplicitForAllFams2.hs:33:10: warning: [-Wunused-foralls (in -Wextra)]
+    Quantified type variable ‘a’ not used on the right hand side
+
+ExplicitForAllFams2.hs:36:7: warning: [-Wunused-type-patterns]
+    Defined but not used on the right hand side: type variable ‘t’
+
+ExplicitForAllFams2.hs:37:6: warning: [-Wunused-type-patterns]
+    Defined but not used on the right hand side: type variable ‘a’
