@@ -2517,7 +2517,7 @@ quasiquote :: { Located (HsSplice GhcPs) }
                             in sL (getLoc $1) (mkHsQuasiQuote quoterId (RealSrcSpan quoteSpan) quote) }
 
 exp   :: { LHsExpr GhcPs }
-        : infixexp '::' sigtype {% ams (sLL $1 $> $ ExprWithTySig (mkLHsSigWcType $3) $1)
+        : infixexp '::' sigtype {% ams (sLL $1 $> $ ExprWithTySig noExt $1 (mkLHsSigWcType $3))
                                        [mu AnnDcolon $2] }
         | infixexp '-<' exp     {% ams (sLL $1 $> $ HsArrApp noExt $1 $3
                                                         HsFirstOrderApp True)
@@ -2609,7 +2609,7 @@ fexp    :: { LHsExpr GhcPs }
         : fexp aexp                  {% checkBlockArguments $1 >> checkBlockArguments $2 >>
                                         return (sLL $1 $> $ (HsApp noExt $1 $2)) }
         | fexp TYPEAPP atype         {% checkBlockArguments $1 >>
-                                        ams (sLL $1 $> $ HsAppType (mkHsWildCardBndrs $3) $1)
+                                        ams (sLL $1 $> $ HsAppType noExt $1 (mkHsWildCardBndrs $3))
                                             [mj AnnAt $2] }
         | 'static' aexp              {% ams (sLL $1 $> $ HsStatic noExt $2)
                                             [mj AnnStatic $1] }

@@ -835,7 +835,7 @@ cvtl e = wrapL (cvt e)
     cvt (AppTypeE e t) = do { e' <- cvtl e
                             ; t' <- cvtType t
                             ; tp <- wrap_apps t'
-                            ; return $ HsAppType (mkHsWildCardBndrs tp) e' }
+                            ; return $ HsAppType noExt e' (mkHsWildCardBndrs tp) }
     cvt (LamE [] e)    = cvt e -- Degenerate case. We convert the body as its
                                -- own expression to avoid pretty-printing
                                -- oddities that can result from zero-argument
@@ -919,7 +919,7 @@ cvtl e = wrapL (cvt e)
     cvt (ParensE e)      = do { e' <- cvtl e; return $ HsPar noExt e' }
     cvt (SigE e t)       = do { e' <- cvtl e; t' <- cvtType t
                               ; let pe = parenthesizeHsExpr sigPrec e'
-                              ; return $ ExprWithTySig (mkLHsSigWcType t') pe }
+                              ; return $ ExprWithTySig noExt pe (mkLHsSigWcType t') }
     cvt (RecConE c flds) = do { c' <- cNameL c
                               ; flds' <- mapM (cvtFld (mkFieldOcc . noLoc)) flds
                               ; return $ mkRdrRecordCon c' (HsRecFields flds' Nothing) }
@@ -1191,7 +1191,7 @@ cvtp (ListP ps)        = do { ps' <- cvtPats ps
                             ; return
                                    $ ListPat noExt ps'}
 cvtp (SigP p t)        = do { p' <- cvtPat p; t' <- cvtType t
-                            ; return $ SigPat (mkLHsSigWcType t') p' }
+                            ; return $ SigPat noExt p' (mkLHsSigWcType t') }
 cvtp (ViewP e p)       = do { e' <- cvtl e; p' <- cvtPat p
                             ; return $ ViewPat noExt e' p'}
 
