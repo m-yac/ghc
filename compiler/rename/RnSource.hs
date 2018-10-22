@@ -752,8 +752,9 @@ rnFamInstEqn doc mb_cls rhs_kvars
                           inst_tvs = case mb_cls of
                                        Nothing            -> []
                                        Just (_, inst_tvs) -> inst_tvs
-                    ; warnUnusedForAll bndrs' nms_used
-                    ; warnUnusedTypePatterns all_imp_var_names nms_used
+                          all_nms = all_imp_var_names
+                                      ++ map hsLTyVarName bndrs'
+                    ; warnUnusedTypePatterns all_nms nms_used
 
                          -- See Note [Renaming associated types]
                     ; let bad_tvs = maybe [] (filter is_bad . snd) mb_cls
@@ -786,16 +787,6 @@ rnFamInstEqn doc mb_cls rhs_kvars
                  all_fvs) }
 rnFamInstEqn _ _ _ (HsIB _ (XFamEqn _)) _ = panic "rnFamInstEqn"
 rnFamInstEqn _ _ _ (XHsImplicitBndrs _) _ = panic "rnFamInstEqn"
-
--- Similar to warnUnusedForAll in RnUtils.hs
-warnUnusedForAll :: [LHsTyVarBndr GhcRn] -> FreeVars -> TcM ()
-warnUnusedForAll bndrs used_names = mapM_ (warn_unused used_names) bndrs
-  where warn_unused used_names (L loc tv)
-          = whenWOptM Opt_WarnUnusedForalls $
-            unless (hsTyVarName tv `elemNameSet` used_names) $
-            addWarnAt (Reason Opt_WarnUnusedForalls) loc $
-            vcat [ text "Quantified type variable" <+> quotes (ppr tv)
-                   <+> text "not used on the right hand side" ]
 
 rnTyFamInstDecl :: Maybe (Name, [Name])
                 -> TyFamInstDecl GhcPs
