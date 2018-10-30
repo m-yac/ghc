@@ -728,7 +728,7 @@ rnFamInstEqn doc mb_cls rhs_kvars
        ; ((bndrs', pats', payload'), fvs)
               <- bindLocalNamesFV all_imp_var_names $
                  bindLHsTyVarBndrs doc (Just $ inHsDocContext doc)
-                                   mb_cls bndrs $ \bndrs' ->
+                                   Nothing bndrs $ \bndrs' ->
                  do { (pats', pat_fvs) <- rnLHsTypes (FamPatCtx tycon) pats
                     ; (payload', rhs_fvs) <- rn_payload doc payload
 
