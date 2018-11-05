@@ -729,6 +729,11 @@ rnFamInstEqn doc mb_cls rhs_kvars
               <- bindLocalNamesFV all_imp_var_names $
                  bindLHsTyVarBndrs doc (Just $ inHsDocContext doc)
                                    Nothing bndrs $ \bndrs' ->
+                 -- Note: If we pass mb_cls instead of Nothing here,
+                 --  bindLHsTyVarBndrs will use class variables for any names
+                 --  the user meant to bring in scope here. This is an explicit
+                 --  forall, so we want fresh names, not class variables.
+                 --  Thus: always pass Nothing
                  do { (pats', pat_fvs) <- rnLHsTypes (FamPatCtx tycon) pats
                     ; (payload', rhs_fvs) <- rn_payload doc payload
 
